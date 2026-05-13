@@ -1,0 +1,16 @@
+services:
+  slatessh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: slatessh:local
+    container_name: slatessh
+    restart: unless-stopped
+    ports:
+      - "3210:3210"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3210
+      STACK_GO_DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
