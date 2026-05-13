@@ -1,4 +1,4 @@
-package connections
+﻿package connections
 
 import (
 	"context"
@@ -20,6 +20,7 @@ type Service struct {
 
 type UpsertInput struct {
 	Name       string `json:"name"`
+	Type       string `json:"type"`
 	Host       string `json:"host"`
 	Port       int    `json:"port"`
 	Username   string `json:"username"`
@@ -84,6 +85,18 @@ func (s *Service) Test(ctx context.Context, input UpsertInput) (int64, error) {
 		return 0, errBadRequest("缺少必要的连接信息 (host, port, username, auth_method)。")
 	}
 
+	connectionType := normalizeConnectionType(input.Type)
+	if connectionType == "RDP" {
+		started := time.Now()
+		dialer := net.Dialer{Timeout: 15 * time.Second}
+		conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(input.Port)))
+		if err != nil {
+			return 0, err
+		}
+		_ = conn.Close()
+		return time.Since(started).Milliseconds(), nil
+	}
+
 	authMethod := strings.ToLower(strings.TrimSpace(input.AuthMethod))
 	var auth ssh.AuthMethod
 	switch authMethod {
@@ -125,8 +138,15 @@ func (s *Service) toConnection(input UpsertInput) (models.Connection, error) {
 	if host == "" || input.Username == "" || input.Port <= 0 {
 		return models.Connection{}, errBadRequest("缺少必要的连接信息 (host, port, username, auth_method)。")
 	}
+	connectionType := normalizeConnectionType(input.Type)
 	authMethod := strings.ToLower(strings.TrimSpace(input.AuthMethod))
-	if authMethod != "password" && authMethod != "key" {
+	if connectionType == "RDP" && authMethod == "" {
+		authMethod = "password"
+	}
+	if connectionType == "RDP" && authMethod != "password" {
+		return models.Connection{}, errBadRequest("RDP 连接目前仅支持密码认证。")
+	}
+	if connectionType == "SSH" && authMethod != "password" && authMethod != "key" {
 		return models.Connection{}, errBadRequest("无效的认证方式。")
 	}
 
@@ -150,7 +170,7 @@ func (s *Service) toConnection(input UpsertInput) (models.Connection, error) {
 
 	return models.Connection{
 		Name:              name,
-		Type:              "SSH",
+		Type:              connectionType,
 		Host:              host,
 		Port:              input.Port,
 		Username:          strings.TrimSpace(input.Username),
@@ -177,3 +197,15 @@ func (s *Service) decryptConnection(connection models.Connection) (*models.Decry
 	}
 	return &models.DecryptedConnection{Connection: connection, Password: password, PrivateKey: privateKey, Passphrase: passphrase}, nil
 }
+
+func normalizeConnectionType(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "RDP":
+		return "RDP"
+	case "SSH", "":
+		return "SSH"
+	default:
+		return "SSH"
+	}
+}
+

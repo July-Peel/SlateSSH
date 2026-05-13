@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "Bash(go test *)"
+    ]
+  }
+}

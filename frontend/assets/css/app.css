@@ -105,8 +105,24 @@ button:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(0,0,0,0.05)
 .terminal-stage { position: relative; min-height: 0; background: #020617; }
 .terminal-wrap { position: absolute; inset: 0; }
 .terminal-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #94a3b8; }
+.rdp-surface { width: 100%; height: 100%; background: #000; overflow: hidden; }
+.rdp-surface canvas, .rdp-surface div { width: 100%; height: 100%; }
 .commandbar { border-top: 1px solid var(--border); border-bottom: 0; }
 .status-line { padding: 0 12px 10px; }
+
+.rdp-surface .guacamole-client {
+  width: 100%;
+  height: 100%;
+}
+
+.rdp-surface .guacamole-display {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.rdp-surface canvas {
+  image-rendering: auto;
+}
 
 .status-list { display: grid; gap: 10px; }
 .status-list div { display: grid; gap: 3px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }

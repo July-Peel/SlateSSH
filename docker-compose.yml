@@ -1,4 +1,4 @@
-services:
+﻿services:
   slatessh:
     build:
       context: .
@@ -12,5 +12,27 @@ services:
       HOST: 0.0.0.0
       PORT: 3210
       STACK_GO_DATA_DIR: /app/data
+      GUACD_HOST: guacd
+      GUACD_PORT: 4822
     volumes:
       - ./data:/app/data
+    networks:
+      - slatessh-network
+
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: slatessh-guacd
+    networks:
+      - slatessh-network
+    restart: unless-stopped
+
+networks:
+  slatessh-network:
+    driver: bridge
+    name: slatessh-network
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd01::/80    
+          gateway: fd01::1    
+

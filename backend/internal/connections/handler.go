@@ -1,4 +1,4 @@
-package connections
+﻿package connections
 
 import (
     "encoding/json"
@@ -105,7 +105,7 @@ func (h *Handler) TestSaved(w http.ResponseWriter, r *http.Request) {
         writeJSON(w, http.StatusNotFound, map[string]any{"message": "连接未找到。"})
         return
     }
-    latency, err := h.service.Test(r.Context(), UpsertInput{Host: connection.Host, Port: connection.Port, Username: connection.Username, AuthMethod: connection.AuthMethod, Password: connection.Password, PrivateKey: connection.PrivateKey, Passphrase: connection.Passphrase})
+    latency, err := h.service.Test(r.Context(), UpsertInput{Type: connection.Type, Host: connection.Host, Port: connection.Port, Username: connection.Username, AuthMethod: connection.AuthMethod, Password: connection.Password, PrivateKey: connection.PrivateKey, Passphrase: connection.Passphrase})
     if err != nil {
         writeError(w, err)
         return
@@ -150,3 +150,4 @@ func writeError(w http.ResponseWriter, err error) {
     }
     writeJSON(w, http.StatusInternalServerError, map[string]any{"message": err.Error()})
 }
+

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -130,7 +130,7 @@
               <div class="tab-empty" x-show="!sessions.length">暂无活动会话</div>
             </div>
 
-            <div class="terminal-tools">
+            <div class="terminal-tools" x-show="!activeSessionId || activeSessionType() !== 'RDP'">
               <input x-model="terminalSearch" @keydown.enter.prevent="searchTerminal()" placeholder="搜索终端输出">
               <button @click="searchTerminal()">搜索</button>
               <button @click="findNextTerminalResult()">下一个</button>
@@ -140,15 +140,20 @@
             <div class="terminal-stage">
               <template x-for="tab in sessions" :key="tab.id + '-terminal'">
                 <div x-show="activeSessionId === tab.id" class="terminal-wrap">
-                  <div :id="'terminal-' + tab.id" class="terminal-surface"></div>
+                  <template x-if="tab.type === 'RDP'">
+                    <div class="rdp-surface" :id="'rdp-' + tab.id"></div>
+                  </template>
+                  <template x-if="tab.type !== 'RDP'">
+                    <div :id="'terminal-' + tab.id" class="terminal-surface"></div>
+                  </template>
                 </div>
               </template>
               <template x-if="!sessions.length">
-                <div class="terminal-empty">从“连接管理”选择一个 SSH 连接开始。</div>
+                <div class="terminal-empty">从“连接管理”选择一个 SSH 或 RDP 连接开始。</div>
               </template>
             </div>
 
-            <div class="mobile-keyboard" x-show="isMobile" style="display: none;">
+            <div class="mobile-keyboard" x-show="isMobile && activeSessionType() !== 'RDP'" style="display: none;">
               <button @click="ctrlKeyActive = !ctrlKeyActive" :style="ctrlKeyActive ? 'background: var(--accent); color: #fff; border-color: var(--accent);' : ''">Ctrl</button>
               <button @click="sendQuick('\x1b')">Esc</button>
               <button @click="sendQuick('\x09')">Tab</button>
@@ -160,7 +165,7 @@
               <button @click="sendQuick('/')">/</button>
             </div>
 
-            <div class="commandbar">
+            <div class="commandbar" x-show="!activeSessionId || activeSessionType() !== 'RDP'">
               <button @click="sendQuick('')" x-show="!isMobile">Ctrl+C</button>
               <button @click="sendQuick('clear')" x-show="!isMobile">clear</button>
               <button @click="sendQuick('exit')" x-show="!isMobile">exit</button>
@@ -209,10 +214,10 @@
                   <div class="connection-item">
                     <div>
                       <strong x-text="connection.name"></strong>
-                      <small x-text="connection.username + '@' + connection.host + ':' + connection.port"></small>
+                      <small><span class="type-badge" x-text="connection.type || 'SSH'"></span><span x-text="' ' + connection.username + '@' + connection.host + ':' + connection.port"></span></small>
                     </div>
                     <div class="connection-actions">
-                      <button @click="openSession(connection); closeConnectionManager()">连接</button>
+                      <button @click="openSession(connection); closeConnectionManager()" x-text="(connection.type || 'SSH') === 'RDP' ? '打开桌面' : '连接'"></button>
                       <button @click="testSavedConnection(connection.id)">测试</button>
                       <button @click="editConnection(connection)">编辑</button>
                       <button class="danger-text" @click="deleteConnection(connection.id)">删</button>
@@ -224,17 +229,21 @@
               <form x-show="showConnectionForm" @submit.prevent="saveConnection()" class="connection-form">
                 <h3 x-text="connectionForm.id ? '编辑连接' : '新增连接'"></h3>
                 <input x-model="connectionForm.name" autocomplete="off" placeholder="名称">
+                <select x-model="connectionForm.type" @change="normalizeConnectionForm()">
+                  <option value="SSH">SSH 终端</option>
+                  <option value="RDP">RDP 远程桌面</option>
+                </select>
                 <input x-model="connectionForm.host" autocomplete="url" placeholder="主机">
                 <input x-model.number="connectionForm.port" type="number" autocomplete="off" placeholder="端口">
                 <input x-model="connectionForm.username" autocomplete="username" placeholder="用户名">
-                <select x-model="connectionForm.auth_method">
+                <select x-show="connectionForm.type !== 'RDP'" x-model="connectionForm.auth_method">
                   <option value="password">密码</option>
                   <option value="key">私钥</option>
                 </select>
-                <template x-if="connectionForm.auth_method === 'password'">
+                <template x-if="connectionForm.auth_method === 'password' || connectionForm.type === 'RDP'">
                   <input x-model="connectionForm.password" type="password" autocomplete="current-password" :placeholder="connectionForm.id ? '留空则保持原密码' : '密码'">
                 </template>
-                <template x-if="connectionForm.auth_method === 'key'">
+                <template x-if="connectionForm.auth_method === 'key' && connectionForm.type !== 'RDP'">
                   <div class="form-stack">
                     <textarea x-model="connectionForm.private_key" placeholder="私钥，编辑时留空则保持原私钥"></textarea>
                     <input x-model="connectionForm.passphrase" type="password" autocomplete="current-password" placeholder="Passphrase，可留空">
@@ -289,10 +298,13 @@
   <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-search/lib/addon-search.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/guacamole-common-js@1.5.5/dist/guacamole-common.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
   <script>
     require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
   </script>
-  <script src="/assets/js/app.js?v=20260512c"></script>
+  <script src="/assets/js/app.js?v=20260513a"></script>
 </body>
 </html>
+
+

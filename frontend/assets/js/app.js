@@ -1,4 +1,4 @@
-function shadowApp() {
+﻿function shadowApp() {
   return {
     booting: true,
     needsSetup: false,
@@ -8,6 +8,10 @@ function shadowApp() {
     connections: [],
     sessions: [],
     terminals: {},
+    rdpClients: {},
+    rdpKeyboards: {},
+    rdpViewportWidth: 1280,
+    rdpViewportHeight: 720,
     searchAddons: {},
     fitAddons: {},
     socket: null,
@@ -38,7 +42,7 @@ function shadowApp() {
     isMonacoUpdating: false,
     setupForm: { username: '', password: '', confirmPassword: '' },
     loginForm: { username: '', password: '', rememberMe: false },
-    connectionForm: { id: null, name: '', host: '', port: 22, username: 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' },
+    connectionForm: { id: null, name: '', type: 'SSH', host: '', port: 22, username: 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' },
     isMobile: window.innerWidth <= 760,
     showMobileSftp: false,
     showMobileStatus: false,
@@ -51,6 +55,77 @@ function shadowApp() {
 
     get activeEditorTab() {
       return this.editorTabs.find(tab => tab.id === this.activeEditorTabId) || null;
+    },
+
+    activeSessionType() {
+      if (!this.activeSessionId) return '';
+      return this.sessions.find(tab => tab.id === this.activeSessionId)?.type || '';
+    },
+
+    getRdpClientOptions() {
+      return {
+        width: Math.max(1, this.rdpViewportWidth || 1280),
+        height: Math.max(1, this.rdpViewportHeight || 720),
+        dpi: 96,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
+      };
+    },
+
+    fitRdp(id) {
+      const client = this.rdpClients[id];
+      const el = document.getElementById(`rdp-${id}`);
+      if (!client || !el) return;
+      const rect = el.getBoundingClientRect();
+      const width = Math.max(1, Math.floor(rect.width || el.clientWidth || 1280));
+      const height = Math.max(1, Math.floor(rect.height || el.clientHeight || 720));
+      this.rdpViewportWidth = width;
+      this.rdpViewportHeight = height;
+      try {
+        client.sendSize(width, height);
+      } catch (_) {}
+    },
+
+    createRdpTunnel(url) {
+      const tunnel = {
+        state: Guacamole.Tunnel.State.CLOSED,
+        oninstruction: null,
+        onstatechange: null,
+        onerror: null,
+        socket: null,
+        connect: () => {
+          if (tunnel.socket) return;
+          const parser = new Guacamole.Parser();
+          parser.oninstruction = (opcode, parameters) => tunnel.oninstruction?.(opcode, parameters);
+          tunnel.setState(Guacamole.Tunnel.State.CONNECTING);
+          tunnel.socket = new WebSocket(url, 'guacamole');
+          tunnel.socket.onopen = () => tunnel.setState(Guacamole.Tunnel.State.OPEN);
+          tunnel.socket.onmessage = (event) => parser.receive(event.data);
+          tunnel.socket.onerror = () => tunnel.onerror?.({ message: 'RDP WebSocket 连接失败。' });
+          tunnel.socket.onclose = () => tunnel.setState(Guacamole.Tunnel.State.CLOSED);
+        },
+        disconnect: () => {
+          if (tunnel.socket && tunnel.socket.readyState !== WebSocket.CLOSED) tunnel.socket.close();
+          tunnel.socket = null;
+          tunnel.setState(Guacamole.Tunnel.State.CLOSED);
+        },
+        sendMessage: (...elements) => {
+          if (!tunnel.socket || tunnel.socket.readyState !== WebSocket.OPEN) return;
+          tunnel.socket.send(this.formatGuacamoleInstruction(elements));
+        },
+        setState: (state) => {
+          if (tunnel.state === state) return;
+          tunnel.state = state;
+          tunnel.onstatechange?.(state);
+        }
+      };
+      return tunnel;
+    },
+
+    formatGuacamoleInstruction(elements) {
+      return elements.map(element => {
+        const value = String(element ?? '');
+        return `${value.length}.${value}`;
+      }).join(',') + ';';
     },
 
     get pathSegments() {
@@ -83,6 +158,9 @@ function shadowApp() {
     async init() {
       window.addEventListener('resize', () => {
         this.isMobile = window.innerWidth <= 760;
+        if (this.activeSessionType() === 'RDP' && this.activeSessionId) {
+          setTimeout(() => this.fitRdp(this.activeSessionId), 0);
+        }
       });
       document.addEventListener('click', () => this.hideContextMenu());
       document.addEventListener('mousemove', (event) => this.dragEditor(event));
@@ -164,8 +242,8 @@ function shadowApp() {
       this.connections = await resp.json();
     },
 
-    newConnection() {
-      this.connectionForm = { id: null, name: '', host: '', port: 22, username: 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' };
+    newConnection(type = 'SSH') {
+      this.connectionForm = { id: null, name: '', type, host: '', port: type === 'RDP' ? 3389 : 22, username: type === 'RDP' ? '' : 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' };
       this.testMessage = '';
       this.testMessageType = 'info';
       this.showConnectionForm = true;
@@ -178,9 +256,10 @@ function shadowApp() {
       this.connectionForm = {
         id: connection.id,
         name: connection.name || '',
+        type: connection.type || 'SSH',
         host: connection.host || '',
-        port: connection.port || 22,
-        username: connection.username || 'root',
+        port: connection.port || ((connection.type || 'SSH') === 'RDP' ? 3389 : 22),
+        username: connection.username || ((connection.type || 'SSH') === 'RDP' ? '' : 'root'),
         auth_method: connection.auth_method || 'password',
         password: '',
         private_key: '',
@@ -201,7 +280,7 @@ function shadowApp() {
       this.showConnectionManager = false;
       this.testMessage = payload.id ? '连接已更新。' : '连接已保存。';
       this.testMessageType = 'success';
-      this.connectionForm = { id: null, name: '', host: '', port: 22, username: 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' };
+      this.connectionForm = { id: null, name: '', type: 'SSH', host: '', port: 22, username: 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' };
       await this.refreshConnections();
     },
 
@@ -376,14 +455,92 @@ function shadowApp() {
     },
 
     async openSession(connection) {
+      if ((connection.type || 'SSH') === 'RDP') {
+        await this.openRdpSession(connection);
+        return;
+      }
       this.testMessage = `正在连接 ${connection.name || connection.host}...`;
       this.testMessageType = 'info';
       await this.sendSocket({ type: 'ssh:connect', payload: { connectionId: connection.id } });
     },
 
+    async openRdpSession(connection) {
+      if (!window.Guacamole) {
+        this.testMessage = 'Guacamole 客户端加载失败，请检查网络或静态资源。';
+        this.testMessageType = 'error';
+        return;
+      }
+      const existing = this.sessions.find(tab => tab.connectionId === connection.id && tab.type === 'RDP');
+      if (existing) {
+        this.activateSession(existing.id);
+        return;
+      }
+      const id = crypto.randomUUID();
+      const tab = { id, connectionId: connection.id, name: connection.name || connection.host || 'RDP', type: 'RDP', connected: false };
+      this.sessions.push(tab);
+      this.activeSessionId = id;
+      this.files = [];
+      this.activePath = '.';
+      this.testMessage = `正在打开 RDP 桌面 ${tab.name}...`;
+      this.testMessageType = 'info';
+      await new Promise(resolve => this.$nextTick(resolve));
+      const el = document.getElementById(`rdp-${id}`);
+      if (!el) {
+        this.testMessage = 'RDP 显示区域未初始化。';
+        this.testMessageType = 'error';
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const width = Math.max(1, Math.floor(rect.width || 1280));
+      const height = Math.max(1, Math.floor(rect.height || 720));
+      const query = new URLSearchParams({ width: String(width), height: String(height), dpi: '96', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' });
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const tunnel = new Guacamole.WebSocketTunnel(`${protocol}//${location.host}/api/v1/rdp/${connection.id}/tunnel?${query.toString()}`);
+      const client = new Guacamole.Client(tunnel);
+      const display = client.getDisplay().getElement();
+      el.innerHTML = '';
+      el.appendChild(display);
+      this.rdpClients[id] = client;
+      client.onstatechange = (state) => {
+        tab.connected = state === Guacamole.Client.State.CONNECTED || state === Guacamole.Client.State.WAITING;
+        if (state === Guacamole.Client.State.CONNECTED) {
+          this.testMessage = `RDP 桌面已连接：${tab.name}`;
+          this.testMessageType = 'success';
+          setTimeout(() => this.fitRdp(id), 50);
+        }
+        if (state === Guacamole.Client.State.DISCONNECTED) {
+          tab.connected = false;
+        }
+      };
+      client.onerror = (status) => {
+        tab.connected = false;
+        this.testMessage = status?.message || 'RDP 连接失败。';
+        this.testMessageType = 'error';
+      };
+      const mouse = new Guacamole.Mouse(el);
+      mouse.onmousedown = mouse.onmouseup = mouse.onmousemove = (mouseState) => client.sendMouseState(mouseState);
+      const keyboard = new Guacamole.Keyboard(document);
+      keyboard.onkeydown = (keysym) => {
+        if (this.activeSessionId !== id) return true;
+        client.sendKeyEvent(1, keysym);
+        return false;
+      };
+      keyboard.onkeyup = (keysym) => {
+        if (this.activeSessionId !== id) return true;
+        client.sendKeyEvent(0, keysym);
+        return false;
+      };
+      this.rdpKeyboards[id] = keyboard;
+      el.tabIndex = 0;
+      el.addEventListener('click', () => el.focus());
+      client.connect();
+      setTimeout(() => this.fitRdp(id), 100);
+    },
+
     activateSession(id) {
       this.activeSessionId = id;
-      this.refreshFiles();
+      if (this.activeSessionType() !== 'RDP') this.refreshFiles();
+      if (this.rdpClients[id]) this.fitRdp(id);
       if (this.terminals[id]) {
         this.terminals[id].focus();
         this.fitAddons[id]?.fit?.();
@@ -393,9 +550,19 @@ function shadowApp() {
     closeTab(id, notify = true) {
       const idx = this.sessions.findIndex(x => x.id === id);
       if (idx >= 0) this.sessions.splice(idx, 1);
-      if (notify && this.socket?.readyState === WebSocket.OPEN) {
+      if (notify && this.socket?.readyState === WebSocket.OPEN && this.terminals[id]) {
         this.socket.send(JSON.stringify({ type: 'ssh:disconnect', sessionId: id }));
       }
+      if (this.rdpKeyboards[id]) {
+        try { this.rdpKeyboards[id].onkeydown = null; this.rdpKeyboards[id].onkeyup = null; } catch (_) {}
+        delete this.rdpKeyboards[id];
+      }
+      if (this.rdpClients[id]) {
+        try { this.rdpClients[id].disconnect(); } catch (_) {}
+        delete this.rdpClients[id];
+      }
+      const rdpEl = document.getElementById(`rdp-${id}`);
+      if (rdpEl) rdpEl.innerHTML = '';
       if (this.terminals[id]) {
         this.terminals[id].dispose();
         delete this.terminals[id];
@@ -408,7 +575,7 @@ function shadowApp() {
         this.activeSessionId = this.sessions[0]?.id || null;
         this.activePath = '.';
         this.files = [];
-        if (this.activeSessionId) {
+        if (this.activeSessionId && this.activeSessionType() !== 'RDP') {
           setTimeout(() => this.refreshFiles(), 80);
         }
       }
@@ -488,6 +655,12 @@ function shadowApp() {
     },
 
     async refreshFiles() {
+      if (this.activeSessionType() === 'RDP') {
+        this.files = [];
+        this.testMessage = 'RDP 会话不提供 SFTP 文件浏览。';
+        this.testMessageType = 'info';
+        return;
+      }
       if (!this.activeSessionId) {
         this.testMessage = '请先连接 SSH 会话。';
         this.testMessageType = 'error';
@@ -810,3 +983,6 @@ function shadowApp() {
   };
 }
 window.shadowApp = shadowApp;
+
+
+

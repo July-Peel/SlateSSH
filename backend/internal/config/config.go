@@ -1,4 +1,4 @@
-package config
+﻿package config
 
 import (
 	"crypto/rand"
@@ -17,6 +17,8 @@ type Config struct {
 	SessionSecret string
 	EncryptionKey string
 	FrontendDir   string
+	GuacdHost     string
+	GuacdPort     int
 }
 
 func Load() (Config, error) {
@@ -28,6 +30,10 @@ func Load() (Config, error) {
 	port, err := strconv.Atoi(getenv("PORT", "3210"))
 	if err != nil {
 		return Config{}, fmt.Errorf("invalid PORT: %w", err)
+	}
+	guacdPort, err := strconv.Atoi(getenv("GUACD_PORT", "4822"))
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid GUACD_PORT: %w", err)
 	}
 
 	sessionSecret, err := ensurePersistentSecret("SESSION_SECRET", filepath.Join(dataDir, "session_secret"), 32)
@@ -47,6 +53,8 @@ func Load() (Config, error) {
 		SessionSecret: sessionSecret,
 		EncryptionKey: encryptionKey,
 		FrontendDir:   filepath.Join("..", "frontend"),
+		GuacdHost:     getenv("GUACD_HOST", "guacd"),
+		GuacdPort:     guacdPort,
 	}, nil
 }
 
@@ -81,3 +89,5 @@ func ensurePersistentSecret(key, path string, size int) (string, error) {
 	_ = os.Setenv(key, value)
 	return value, nil
 }
+
+

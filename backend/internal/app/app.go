@@ -1,4 +1,4 @@
-package app
+﻿package app
 
 import (
     "database/sql"
@@ -17,6 +17,7 @@ import (
     "slatessh/backend/internal/connections"
     crypto2 "slatessh/backend/internal/crypto"
     "slatessh/backend/internal/db"
+    "slatessh/backend/internal/rdp"
     "slatessh/backend/internal/settings"
     "slatessh/backend/internal/transfers"
     "slatessh/backend/internal/users"
@@ -32,6 +33,7 @@ type App struct {
     settingsHandler *settings.Handler
     connections     *connections.Handler
     transfers       *transfers.Handler
+    rdp             *rdp.Handler
     wsHub           *ws.Hub
 }
 
@@ -73,6 +75,7 @@ func New() (*App, error) {
         settingsHandler: settings.NewHandler(settings.NewRepository(database)),
         connections:     connections.NewHandler(connectionsService),
         transfers:       transfers.NewHandler(database),
+        rdp:             rdp.NewHandler(connectionsService, authService, cfg.GuacdHost, cfg.GuacdPort),
         wsHub:           ws.NewHub(connectionsService, authService),
     }
     application.router = sessions.LoadAndSave(application.routes())
@@ -118,6 +121,7 @@ func (a *App) routes() http.Handler {
 
         protected.Get("/api/v1/files/download", a.wsHub.ServeDownload)
         protected.Post("/api/v1/files/upload", a.wsHub.ServeUpload)
+        protected.Handle("/api/v1/rdp/{id}/tunnel", a.rdp)
         protected.Handle("/ws", a.wsHub)
     })
 
@@ -131,3 +135,4 @@ func (a *App) routes() http.Handler {
 
     return router
 }
+
