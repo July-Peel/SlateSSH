@@ -250,6 +250,19 @@
       this.showConnectionManager = true;
     },
 
+    normalizeConnectionForm() {
+      if (this.connectionForm.type === 'RDP') {
+        if (!this.connectionForm.port || this.connectionForm.port === 22) this.connectionForm.port = 3389;
+        this.connectionForm.auth_method = 'password';
+        this.connectionForm.private_key = '';
+        this.connectionForm.passphrase = '';
+        return;
+      }
+      if (!this.connectionForm.port || this.connectionForm.port === 3389) this.connectionForm.port = 22;
+      if (!this.connectionForm.username) this.connectionForm.username = 'root';
+      if (!this.connectionForm.auth_method) this.connectionForm.auth_method = 'password';
+    },
+
     editConnection(connection) {
       this.showConnectionForm = true;
       this.showConnectionManager = true;
