@@ -1,6 +1,3 @@
-config.json
-piclink.db
-uploads/
 build/
 *.exe
 *.dll
