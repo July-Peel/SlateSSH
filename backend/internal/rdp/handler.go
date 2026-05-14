@@ -109,7 +109,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errCh <- copyGuacdToBrowser(ctx, reader, browser, &writeMu)
 	}()
 	go func() {
-		errCh <- copyBrowserToGuacd(ctx, browser, guacd)
+		errCh <- copyBrowserToGuacd(ctx, browser, guacd, &writeMu)
 	}()
 
 	<-errCh
@@ -174,7 +174,7 @@ func copyGuacdToBrowser(ctx context.Context, reader *bufio.Reader, browser *webs
 	}
 }
 
-func copyBrowserToGuacd(ctx context.Context, browser *websocket.Conn, guacd net.Conn) error {
+func copyBrowserToGuacd(ctx context.Context, browser *websocket.Conn, guacd net.Conn, writeMu *sync.Mutex) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -188,10 +188,28 @@ func copyBrowserToGuacd(ctx context.Context, browser *websocket.Conn, guacd net.
 		if messageType != websocket.TextMessage {
 			continue
 		}
-		if _, err := io.WriteString(guacd, string(data)); err != nil {
+		message := string(data)
+		if isTunnelPing(message) {
+			writeMu.Lock()
+			err = browser.WriteMessage(websocket.TextMessage, data)
+			writeMu.Unlock()
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if strings.HasPrefix(message, "0.") {
+			continue
+		}
+		if _, err := io.WriteString(guacd, message); err != nil {
 			return err
 		}
 	}
+}
+
+func isTunnelPing(message string) bool {
+	elements, _, err := readInstruction(bufio.NewReader(strings.NewReader(message)))
+	return err == nil && len(elements) >= 2 && elements[0] == "" && elements[1] == "ping"
 }
 
 func readInstruction(reader *bufio.Reader) ([]string, string, error) {

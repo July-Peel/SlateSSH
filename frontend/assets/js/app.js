@@ -700,7 +700,7 @@
     },
 
     initMonacoEditor() {
-      if (window.appMonacoInstance) return;
+      if (window.appMonacoInstance || !window.require) return;
       window.require(['vs/editor/editor.main'], () => {
         const container = document.getElementById('monaco-editor-container');
         if (!container) return;

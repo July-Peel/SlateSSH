@@ -303,9 +303,11 @@
   <script>window.Guacamole = window.Guacamole || window.module.exports;</script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
   <script>
-    require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
+    if (window.require) {
+      window.require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
+    }
   </script>
-  <script src="/assets/js/app.js?v=20260513a"></script>
+  <script src="/assets/js/app.js?v=20260514a"></script>
 </body>
 </html>
 
