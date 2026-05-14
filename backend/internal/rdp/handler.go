@@ -282,7 +282,7 @@ func parameterValue(name string, connection *models.DecryptedConnection, options
 	case "enable-wallpaper", "enable-theming", "enable-font-smoothing", "enable-full-window-drag":
 		return "false"
 	case "resize-method":
-		return "display-update"
+		return "reconnect"
 	case "width":
 		return options.Width
 	case "height":
@@ -290,7 +290,7 @@ func parameterValue(name string, connection *models.DecryptedConnection, options
 	case "dpi":
 		return options.DPI
 	case "color-depth":
-		return "24"
+		return "32"
 	case "timezone":
 		return options.Timezone
 	case "disable-audio":

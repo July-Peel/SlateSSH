@@ -81,6 +81,10 @@
       this.rdpViewportWidth = width;
       this.rdpViewportHeight = height;
       try {
+        const display = client.getDisplay();
+        const displayWidth = display.getWidth?.() || width;
+        const displayHeight = display.getHeight?.() || height;
+        display.scale(Math.min(width / displayWidth, height / displayHeight) || 1);
         client.sendSize(width, height);
       } catch (_) {}
     },
@@ -467,9 +471,11 @@
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const tunnel = new Guacamole.WebSocketTunnel(`${protocol}//${location.host}/api/v1/rdp/${connection.id}/tunnel?${query.toString()}`);
       const client = new Guacamole.Client(tunnel);
-      const display = client.getDisplay().getElement();
+      const guacDisplay = client.getDisplay();
+      const display = guacDisplay.getElement();
       el.innerHTML = '';
       el.appendChild(display);
+      guacDisplay.onresize = () => this.fitRdp(id);
       this.rdpClients[id] = client;
       client.onstatechange = (state) => {
         tab.connected = state === Guacamole.Client.State.CONNECTED || state === Guacamole.Client.State.WAITING;
