@@ -85,49 +85,6 @@
       } catch (_) {}
     },
 
-    createRdpTunnel(url) {
-      const tunnel = {
-        state: Guacamole.Tunnel.State.CLOSED,
-        oninstruction: null,
-        onstatechange: null,
-        onerror: null,
-        socket: null,
-        connect: () => {
-          if (tunnel.socket) return;
-          const parser = new Guacamole.Parser();
-          parser.oninstruction = (opcode, parameters) => tunnel.oninstruction?.(opcode, parameters);
-          tunnel.setState(Guacamole.Tunnel.State.CONNECTING);
-          tunnel.socket = new WebSocket(url, 'guacamole');
-          tunnel.socket.onopen = () => tunnel.setState(Guacamole.Tunnel.State.OPEN);
-          tunnel.socket.onmessage = (event) => parser.receive(event.data);
-          tunnel.socket.onerror = () => tunnel.onerror?.({ message: 'RDP WebSocket 连接失败。' });
-          tunnel.socket.onclose = () => tunnel.setState(Guacamole.Tunnel.State.CLOSED);
-        },
-        disconnect: () => {
-          if (tunnel.socket && tunnel.socket.readyState !== WebSocket.CLOSED) tunnel.socket.close();
-          tunnel.socket = null;
-          tunnel.setState(Guacamole.Tunnel.State.CLOSED);
-        },
-        sendMessage: (...elements) => {
-          if (!tunnel.socket || tunnel.socket.readyState !== WebSocket.OPEN) return;
-          tunnel.socket.send(this.formatGuacamoleInstruction(elements));
-        },
-        setState: (state) => {
-          if (tunnel.state === state) return;
-          tunnel.state = state;
-          tunnel.onstatechange?.(state);
-        }
-      };
-      return tunnel;
-    },
-
-    formatGuacamoleInstruction(elements) {
-      return elements.map(element => {
-        const value = String(element ?? '');
-        return `${value.length}.${value}`;
-      }).join(',') + ';';
-    },
-
     get pathSegments() {
       const current = this.activePath || '.';
       const normalized = current.replace(/\\/g, '/');
@@ -523,6 +480,10 @@
         }
         if (state === Guacamole.Client.State.DISCONNECTED) {
           tab.connected = false;
+          if (this.activeSessionId === id && this.testMessageType !== 'error') {
+            this.testMessage = `RDP 桌面已断开：${tab.name}`;
+            this.testMessageType = 'error';
+          }
         }
       };
       client.onerror = (status) => {
