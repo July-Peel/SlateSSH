@@ -123,6 +123,19 @@
           setTimeout(() => this.fitRdp(this.activeSessionId), 0);
         }
       });
+      if (window.visualViewport) {
+        const updateVV = () => {
+          document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
+          document.documentElement.style.setProperty('--vv-top', `${window.visualViewport.offsetTop}px`);
+          document.documentElement.style.setProperty('--vv-left', `${window.visualViewport.pageLeft}px`);
+          if (this.activeSessionId && this.activeSessionType() !== 'RDP') {
+            setTimeout(() => this.fitAddons[this.activeSessionId]?.fit?.(), 20);
+          }
+        };
+        window.visualViewport.addEventListener('resize', updateVV);
+        window.visualViewport.addEventListener('scroll', updateVV);
+        updateVV();
+      }
       document.addEventListener('click', () => this.hideContextMenu());
       document.addEventListener('mousemove', (event) => this.dragEditor(event));
       document.addEventListener('mouseup', () => this.stopEditorDrag());
