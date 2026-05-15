@@ -130,14 +130,21 @@
               <div class="tab-empty" x-show="!sessions.length">暂无活动会话</div>
             </div>
 
-            <div class="terminal-tools" x-show="!activeSessionId || activeSessionType() !== 'RDP'">
-              <input x-model="terminalSearch" @keydown.enter.prevent="searchTerminal()" placeholder="搜索终端输出">
-              <button @click="searchTerminal()">搜索</button>
-              <button @click="findNextTerminalResult()">下一个</button>
-              <button @click="copyTerminalSelection()">复制选中</button>
+            <div class="terminal-tools" x-show="activeSessionId">
+              <template x-if="activeSessionType() !== 'RDP'">
+                <div style="display:contents;">
+                  <input x-model="terminalSearch" @keydown.enter.prevent="searchTerminal()" placeholder="搜索终端输出">
+                  <button @click="searchTerminal()">搜索</button>
+                  <button @click="findNextTerminalResult()">下一个</button>
+                  <button @click="copyTerminalSelection()">复制选中</button>
+                </div>
+              </template>
+              <div class="spacer"></div>
+              <button @click="toggleFullscreen()">网页全屏</button>
             </div>
 
-            <div class="terminal-stage">
+            <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
+              <button x-show="isFullscreen" @click="toggleFullscreen()" class="close-fullscreen-btn">退出全屏</button>
               <template x-for="tab in sessions" :key="tab.id + '-terminal'">
                 <div x-show="activeSessionId === tab.id" class="terminal-wrap">
                   <template x-if="tab.type === 'RDP'">

@@ -612,6 +612,18 @@
       window.addEventListener('resize', () => fit?.fit?.());
     },
 
+    toggleFullscreen() {
+      this.isFullscreen = !this.isFullscreen;
+      this.$nextTick(() => {
+        if (!this.activeSessionId) return;
+        if (this.activeSessionType() === 'RDP') {
+          this.fitRdp(this.activeSessionId);
+        } else {
+          this.fitAddons[this.activeSessionId]?.fit?.();
+        }
+      });
+    },
+
     clearActiveTerminal() {
       const term = this.terminals[this.activeSessionId];
       if (term) term.clear();

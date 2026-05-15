@@ -279,8 +279,8 @@ func parameterValue(name string, connection *models.DecryptedConnection, options
 		return "any"
 	case "ignore-cert":
 		return "true"
-	case "enable-wallpaper", "enable-theming", "enable-font-smoothing", "enable-full-window-drag":
-		return "false"
+	case "enable-wallpaper", "enable-theming", "enable-font-smoothing", "enable-full-window-drag", "enable-desktop-composition", "enable-menu-animations":
+		return "true"
 	case "resize-method":
 		return "reconnect"
 	case "width":
