@@ -22,6 +22,7 @@
     statuses: {},
     theme: localStorage.getItem('slatessh-theme') || 'light',
     showStatusWidget: true,
+    showSftpWidget: true,
     showEditorPanel: false,
     showConnectionForm: false,
     showConnectionManager: false,
@@ -198,10 +199,11 @@
       const resp = await fetch('/api/v1/settings');
       const settings = await resp.json();
       this.showStatusWidget = settings.showServerStatusWidget !== 'false';
+      this.showSftpWidget = settings.showSftpWidget !== 'false';
     },
 
     async saveSettings() {
-      await fetch('/api/v1/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showServerStatusWidget: String(this.showStatusWidget) }) });
+      await fetch('/api/v1/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showServerStatusWidget: String(this.showStatusWidget), showSftpWidget: String(this.showSftpWidget) }) });
     },
 
     toggleTheme() {

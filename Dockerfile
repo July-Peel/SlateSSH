@@ -28,6 +28,7 @@ RUN mkdir -p /app/data
 ENV HOST=0.0.0.0
 ENV PORT=3210
 ENV STACK_GO_DATA_DIR=/app/data
+ENV FRONTEND_DIR=/app/frontend
 
 EXPOSE 3210
 

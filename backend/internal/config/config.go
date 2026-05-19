@@ -55,7 +55,7 @@ func Load() (Config, error) {
 		DBPath:        filepath.Join(dataDir, "slatessh.db"),
 		SessionSecret: sessionSecret,
 		EncryptionKey: encryptionKey,
-		FrontendDir:   filepath.Join("..", "frontend"),
+		FrontendDir:   getenv("FRONTEND_DIR", filepath.Join("..", "frontend")),
 		GuacdHost:     getenv("GUACD_HOST", "guacd"),
 		GuacdPort:     guacdPort,
 	}, nil

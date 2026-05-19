@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SlateSSH Go</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <link rel="stylesheet" href="/assets/css/app.css?v=20260514d">
 </head>
@@ -42,32 +43,49 @@
 
     <template x-if="!booting && authenticated">
       <div class="workspace">
-        <header class="mobile-header" x-show="isMobile" style="display: none;">
-          <button @click="showMobileMenu = !showMobileMenu" class="toolbar-btn">☰ 菜单</button>
-          <div class="brand" style="margin:0; font-size: 16px;">SlateSSH</div>
-          <div style="display:flex;gap:6px;">
-            <button @click="showMobileSftp = !showMobileSftp" class="toolbar-btn">文件</button>
-            <button @click="showMobileStatus = !showMobileStatus" class="toolbar-btn">状态</button>
+        <header class="topbar">
+          <div class="brand">SlateSSH</div>
+          <div class="spacer"></div>
+          <span class="muted" x-text="currentUser?.username || ''" style="margin-right: 12px;"></span>
+          <button @click="logout()" class="danger icon-btn" title="退出"><span class="material-symbols-rounded">logout</span></button>
+        </header>
+
+        <div class="fab-container" x-data="{ fabOpen: false }" @click.away="fabOpen = false">
+          <div class="fab-menu" :class="fabOpen ? 'open' : ''">
+            <button @click="showSftpWidget = !showSftpWidget; saveSettings(); if(isMobile) showMobileSftp = !showMobileSftp; fabOpen = false" class="fab-item" :title="showSftpWidget ? '隐藏文件面板' : '显示文件面板'">
+              <span class="material-symbols-rounded" x-text="showSftpWidget ? 'folder_off' : 'folder'"></span>
+              <span class="fab-label">文件</span>
+            </button>
+            <button @click="showStatusWidget = !showStatusWidget; saveSettings(); if(isMobile) showMobileStatus = !showMobileStatus; fabOpen = false" class="fab-item" :title="showStatusWidget ? '隐藏状态面板' : '显示状态面板'">
+              <span class="material-symbols-rounded" x-text="showStatusWidget ? 'monitoring' : 'speed'"></span>
+              <span class="fab-label">状态</span>
+            </button>
+            <button @click="toggleTheme(); fabOpen = false" class="fab-item" :title="theme === 'dark' ? '白天模式' : '夜间模式'">
+              <span class="material-symbols-rounded" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'"></span>
+              <span class="fab-label" x-text="theme === 'dark' ? '白间' : '夜间'"></span>
+            </button>
+            <button @click="clearActiveTerminal(); fabOpen = false" class="fab-item" title="清空终端">
+              <span class="material-symbols-rounded">mop</span>
+              <span class="fab-label">清空</span>
+            </button>
+            <button @click="refreshFiles(); fabOpen = false" class="fab-item" title="刷新 SFTP">
+              <span class="material-symbols-rounded">refresh</span>
+              <span class="fab-label">刷新</span>
+            </button>
+            <button @click="openConnectionManager(); fabOpen = false" class="fab-item" title="连接管理">
+              <span class="material-symbols-rounded">dns</span>
+              <span class="fab-label">连接</span>
+            </button>
           </div>
-        </header>
+          <button class="fab-main" @click="fabOpen = !fabOpen" :class="fabOpen ? 'open' : ''">
+            <span class="material-symbols-rounded">apps</span>
+          </button>
+        </div>
 
-        <header class="topbar" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
-          <div class="brand" x-show="!isMobile">SlateSSH</div>
-          <button x-show="isMobile" class="toolbar-btn" style="align-self: flex-end; margin-bottom: 10px;" @click="showMobileMenu = false">关闭菜单</button>
-          <button @click="openConnectionManager(); if(isMobile) showMobileMenu = false" class="toolbar-btn">连接管理</button>
-          <button @click="refreshFiles()" class="toolbar-btn">刷新 SFTP</button>
-          <button @click="clearActiveTerminal()" class="toolbar-btn">清空终端</button>
-          <button @click="toggleTheme()" class="toolbar-btn" x-text="theme === 'dark' ? '白天模式' : '夜间模式'"></button>
-          <button @click="showStatusWidget = !showStatusWidget; saveSettings()" class="toolbar-btn" x-show="!isMobile" x-text="showStatusWidget ? '隐藏状态' : '显示状态'"></button>
-          <div class="spacer" x-show="!isMobile"></div>
-          <span class="muted" x-text="currentUser?.username || ''" style="margin-top: auto; padding-top: 20px;"></span>
-          <button @click="logout()" class="danger">退出</button>
-        </header>
+        <div class="drawer-overlay" x-show="isMobile && (showMobileSftp || showMobileStatus)" @click="showMobileSftp = false; showMobileStatus = false"></div>
 
-        <div class="drawer-overlay" x-show="isMobile && (showMobileMenu || showMobileSftp || showMobileStatus)" @click="showMobileMenu = false; showMobileSftp = false; showMobileStatus = false"></div>
-
-        <main class="main-grid" :class="showStatusWidget ? '' : 'no-status'">
-          <aside class="file-panel" :class="isMobile ? (showMobileSftp ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
+        <main class="main-grid" :class="{ 'no-status': !showStatusWidget, 'no-sftp': !showSftpWidget }">
+          <aside class="file-panel" x-show="!isMobile ? showSftpWidget : true" :class="isMobile ? (showMobileSftp ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
             <div class="panel-head">
               <div>
                 <h2>SFTP 文件</h2>
@@ -190,13 +208,33 @@
             </div>
             <template x-if="activeStatus">
               <div class="status-list">
-                <div><span>系统</span><strong x-text="activeStatus.osName || '-' "></strong></div>
-                <div><span>IP</span><strong x-text="activeStatus.serverIp || '-' "></strong></div>
-                <div><span>CPU</span><strong x-text="percent(activeStatus.cpuPercent)"></strong></div>
-                <div><span>内存</span><strong x-text="percent(activeStatus.memPercent)"></strong></div>
-                <div><span>磁盘</span><strong x-text="percent(activeStatus.diskPercent)"></strong></div>
-                <div><span>下行</span><strong x-text="bytes(activeStatus.netRxRate)"></strong></div>
-                <div><span>上行</span><strong x-text="bytes(activeStatus.netTxRate)"></strong></div>
+                <div class="status-info-row"><span>系统</span><strong x-text="activeStatus.osName || '-' "></strong></div>
+                <div class="status-info-row"><span>IP</span><strong x-text="activeStatus.serverIp || '-' "></strong></div>
+                <div class="status-grid">
+                  <div class="status-circle">
+                    <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.cpuPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
+                    <div class="inner">
+                      <strong x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></strong>
+                      <span>CPU</span>
+                    </div>
+                  </div>
+                  <div class="status-circle">
+                    <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.memPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
+                    <div class="inner">
+                      <strong x-text="Math.round(activeStatus.memPercent || 0) + '%'"></strong>
+                      <span>内存</span>
+                    </div>
+                  </div>
+                  <div class="status-circle">
+                    <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.diskPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
+                    <div class="inner">
+                      <strong x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></strong>
+                      <span>磁盘</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">download</span> 下行</span><strong x-text="bytes(activeStatus.netRxRate) + '/s'"></strong></div>
+                <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">upload</span> 上行</span><strong x-text="bytes(activeStatus.netTxRate) + '/s'"></strong></div>
               </div>
             </template>
             <template x-if="!activeStatus">
@@ -208,14 +246,16 @@
         <div x-show="showConnectionManager" class="modal-backdrop" @click.self="closeConnectionManager()">
           <section class="connection-modal">
             <div class="modal-head">
-              <h2>连接管理</h2>
-              <button @click="closeConnectionManager()">×</button>
+              <h2 x-text="showConnectionForm ? (connectionForm.id ? '编辑连接' : '新增连接') : '连接管理'"></h2>
+              <button @click="showConnectionForm ? showConnectionForm = false : closeConnectionManager()" class="icon-btn" style="border: none; background: transparent; padding: 4px;">
+                <span class="material-symbols-rounded" x-text="showConnectionForm ? 'arrow_back' : 'close'"></span>
+              </button>
             </div>
             <div class="connection-layout">
-              <div class="connection-list">
+              <div class="connection-list" x-show="!showConnectionForm">
                 <div class="list-head">
                   <strong>已保存连接</strong>
-                  <button @click="newConnection()">新增</button>
+                  <button @click="newConnection()" class="primary" style="padding: 6px 12px; border-radius: 20px;"><span class="material-symbols-rounded" style="font-size:18px;">add</span> 新增</button>
                 </div>
                 <template x-for="connection in connections" :key="connection.id">
                   <div class="connection-item">
@@ -224,25 +264,25 @@
                       <small><span class="type-badge" x-text="connection.type || 'SSH'"></span><span x-text="' ' + connection.username + '@' + connection.host + ':' + connection.port"></span></small>
                     </div>
                     <div class="connection-actions">
-                      <button @click="openSession(connection); closeConnectionManager()" x-text="(connection.type || 'SSH') === 'RDP' ? '打开桌面' : '连接'"></button>
+                      <button @click="openSession(connection); closeConnectionManager()" x-text="(connection.type || 'SSH') === 'RDP' ? '桌面' : '连接'"></button>
                       <button @click="testSavedConnection(connection.id)">测试</button>
                       <button @click="editConnection(connection)">编辑</button>
-                      <button class="danger-text" @click="deleteConnection(connection.id)">删</button>
+                      <button class="danger-text icon-btn" @click="deleteConnection(connection.id)" title="删除"><span class="material-symbols-rounded" style="font-size:18px;">delete</span></button>
                     </div>
                   </div>
                 </template>
+                <div class="empty" x-show="!connections.length">暂无已保存的连接</div>
               </div>
 
               <form x-show="showConnectionForm" @submit.prevent="saveConnection()" class="connection-form">
-                <h3 x-text="connectionForm.id ? '编辑连接' : '新增连接'"></h3>
-                <input x-model="connectionForm.name" autocomplete="off" placeholder="名称">
+                <input x-model="connectionForm.name" autocomplete="off" placeholder="名称" required>
                 <select x-model="connectionForm.type" @change="normalizeConnectionForm()">
                   <option value="SSH">SSH 终端</option>
                   <option value="RDP">RDP 远程桌面</option>
                 </select>
-                <input x-model="connectionForm.host" autocomplete="url" placeholder="主机">
-                <input x-model.number="connectionForm.port" type="number" autocomplete="off" placeholder="端口">
-                <input x-model="connectionForm.username" autocomplete="username" placeholder="用户名">
+                <input x-model="connectionForm.host" autocomplete="url" placeholder="主机 (IP 或域名)" required>
+                <input x-model.number="connectionForm.port" type="number" autocomplete="off" placeholder="端口" required>
+                <input x-model="connectionForm.username" autocomplete="username" placeholder="用户名" required>
                 <select x-show="connectionForm.type !== 'RDP'" x-model="connectionForm.auth_method">
                   <option value="password">密码</option>
                   <option value="key">私钥</option>
@@ -258,8 +298,9 @@
                 </template>
                 <textarea x-model="connectionForm.notes" placeholder="备注"></textarea>
                 <div class="form-actions">
-                  <button class="primary">保存</button>
-                  <button type="button" @click="testConnection()">测试当前信息</button>
+                  <button class="primary" type="submit">保存</button>
+                  <button type="button" @click="testConnection()">测试</button>
+                  <button type="button" @click="showConnectionForm = false">取消</button>
                 </div>
               </form>
             </div>
