@@ -26,6 +26,7 @@
     showEditorPanel: false,
     showConnectionForm: false,
     showConnectionManager: false,
+    isFullscreen: false,
     commandInput: '',
     terminalSearch: '',
     testMessage: '',
