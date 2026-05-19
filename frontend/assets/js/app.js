@@ -39,6 +39,7 @@
     pendingPasteTarget: null,
     editorWindow: { x: 420, y: 90, width: 760, height: 520, dragging: false, offsetX: 0, offsetY: 0 },
     monacoInstance: null,
+    monacoInitTimer: null,
     isMonacoUpdating: false,
     setupForm: { username: '', password: '', confirmPassword: '' },
     loginForm: { username: '', password: '', rememberMe: false },
@@ -719,12 +720,14 @@
         existing.content = content;
         this.activeEditorTabId = existing.id;
         this.placeEditorWindow();
+        this.$nextTick(() => this.initMonacoEditor());
         return;
       }
       const tab = { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, content };
       this.editorTabs.push(tab);
       this.activeEditorTabId = tab.id;
       this.placeEditorWindow();
+      this.$nextTick(() => this.initMonacoEditor());
     },
 
     activateEditorTab(id) {
@@ -745,10 +748,14 @@
     },
 
     initMonacoEditor() {
-      if (!window.require) return;
       const container = document.getElementById('monaco-editor-container');
       if (!container) return;
-      
+      if (!window.require) {
+        clearTimeout(this.monacoInitTimer);
+        this.monacoInitTimer = setTimeout(() => this.initMonacoEditor(), 50);
+        return;
+      }
+
       if (window.appMonacoInstance) {
         window.appMonacoInstance.dispose();
         window.appMonacoInstance = null;
@@ -756,10 +763,10 @@
 
       window.require(['vs/editor/editor.main'], () => {
         const container = document.getElementById('monaco-editor-container');
-        if (!container) return;
+        if (!container || !this.activeEditorTab) return;
         window.appMonacoInstance = window.monaco.editor.create(container, {
-          value: this.activeEditorTab?.content || '',
-          language: this.getMonacoLanguage(this.activeEditorTab?.name),
+          value: this.activeEditorTab.content || '',
+          language: this.getMonacoLanguage(this.activeEditorTab.name),
           theme: this.theme === 'dark' ? 'vs-dark' : 'vs',
           automaticLayout: true,
           minimap: { enabled: false },
@@ -771,6 +778,7 @@
             this.activeEditorTab.content = window.appMonacoInstance.getValue();
           }
         });
+        window.appMonacoInstance.layout();
       });
     },
 
