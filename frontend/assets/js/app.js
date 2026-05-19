@@ -41,6 +41,7 @@
     pendingPasteTarget: null,
     editorWindow: { x: 420, y: 90, width: 760, height: 520, dragging: false, offsetX: 0, offsetY: 0 },
     monacoInstance: null,
+    monacoReady: false,
     monacoInitTimer: null,
     isMonacoUpdating: false,
     setupForm: { username: '', password: '', confirmPassword: '' },
@@ -719,6 +720,11 @@
 
     openEditorTab(path, content) {
       const existing = this.editorTabs.find(tab => tab.path === path);
+      this.monacoReady = false;
+      if (window.appMonacoInstance) {
+        window.appMonacoInstance.dispose();
+        window.appMonacoInstance = null;
+      }
       if (existing) {
         existing.content = content;
         this.activeEditorTabId = existing.id;
@@ -741,6 +747,13 @@
       const idx = this.editorTabs.findIndex(tab => tab.id === id);
       if (idx >= 0) this.editorTabs.splice(idx, 1);
       if (this.activeEditorTabId === id) this.activeEditorTabId = this.editorTabs[0]?.id || null;
+      if (!this.activeEditorTabId) {
+        this.monacoReady = false;
+        if (window.appMonacoInstance) {
+          window.appMonacoInstance.dispose();
+          window.appMonacoInstance = null;
+        }
+      }
     },
 
     getMonacoLanguage(filename) {
@@ -752,20 +765,20 @@
 
     initMonacoEditor() {
       const container = document.getElementById('monaco-editor-container');
-      if (!container) return;
+      if (!container || !this.activeEditorTab) return;
       if (!window.require) {
         clearTimeout(this.monacoInitTimer);
-        this.monacoInitTimer = setTimeout(() => this.initMonacoEditor(), 50);
+        this.monacoInitTimer = setTimeout(() => this.initMonacoEditor(), 80);
         return;
       }
 
       window.require(['vs/editor/editor.main'], () => {
+        const container = document.getElementById('monaco-editor-container');
+        if (!container || !this.activeEditorTab) return;
         if (window.appMonacoInstance) {
           window.appMonacoInstance.dispose();
           window.appMonacoInstance = null;
         }
-        const container = document.getElementById('monaco-editor-container');
-        if (!container || !this.activeEditorTab) return;
         window.appMonacoInstance = window.monaco.editor.create(container, {
           value: this.activeEditorTab.content || '',
           language: this.getMonacoLanguage(this.activeEditorTab.name),
@@ -780,7 +793,8 @@
             this.activeEditorTab.content = window.appMonacoInstance.getValue();
           }
         });
-        window.appMonacoInstance.layout();
+        this.monacoReady = true;
+        this.$nextTick(() => window.appMonacoInstance?.layout?.());
       });
     },
 

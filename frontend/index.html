@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260514d">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260514f">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
@@ -327,7 +327,10 @@
             </div>
           </div>
           <template x-if="activeEditorTab">
-            <div id="monaco-editor-container" class="editor-body" style="height: 100%; width: 100%;" x-init="$nextTick(() => initMonacoEditor())" x-effect="updateMonacoEditor()"></div>
+            <div class="editor-body">
+              <textarea class="editor-textarea" :class="monacoReady ? 'hidden-editor' : ''" x-model="activeEditorTab.content"></textarea>
+              <div id="monaco-editor-container" class="monaco-editor-container" :class="monacoReady ? '' : 'hidden-editor'" x-init="$nextTick(() => initMonacoEditor())" x-effect="updateMonacoEditor()"></div>
+            </div>
           </template>
         </div>
 
@@ -355,7 +358,7 @@
       window.require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
     }
   </script>
-  <script src="/assets/js/app.js?v=20260514d"></script>
+  <script src="/assets/js/app.js?v=20260514f"></script>
 </body>
 </html>
 
