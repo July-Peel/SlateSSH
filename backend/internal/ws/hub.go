@@ -50,6 +50,10 @@ type ClientSession struct {
 	cancel       context.CancelFunc
 }
 
+type shellResizer interface {
+	Resize(cols, rows int) error
+}
+
 type Message struct {
 	Type      string         `json:"type"`
 	SessionID string         `json:"sessionId,omitempty"`
@@ -192,7 +196,7 @@ func (h *Hub) handleMessage(ctx context.Context, socket *websocket.Conn, message
 	case "ssh:input":
 		return h.handleSSHInput(message)
 	case "ssh:resize":
-		return nil
+		return h.handleSSHResize(message)
 	case "ssh:disconnect":
 		h.closeSession(message.SessionID, "manual disconnect", true)
 		return nil
@@ -333,6 +337,26 @@ func (h *Hub) handleSSHInput(message Message) error {
 	}
 	_, err := io.WriteString(session.ShellInput, data)
 	return err
+}
+
+func (h *Hub) handleSSHResize(message Message) error {
+	session := h.getSession(message.SessionID)
+	if session == nil {
+		return fmt.Errorf("session not found")
+	}
+	cols, ok := intFromPayload(message.Payload, "cols")
+	if !ok || cols <= 0 {
+		return nil
+	}
+	rows, ok := intFromPayload(message.Payload, "rows")
+	if !ok || rows <= 0 {
+		return nil
+	}
+	resizer, ok := session.Shell.(shellResizer)
+	if !ok {
+		return nil
+	}
+	return resizer.Resize(cols, rows)
 }
 
 func (h *Hub) handleStatusRefresh(message Message) error {
@@ -535,6 +559,26 @@ func stringFromPayload(payload map[string]any, key string) (string, bool) {
 	}
 	value, ok := raw.(string)
 	return value, ok
+}
+
+func intFromPayload(payload map[string]any, key string) (int, bool) {
+	raw, ok := payload[key]
+	if !ok || raw == nil {
+		return 0, false
+	}
+	switch value := raw.(type) {
+	case float64:
+		return int(value), true
+	case int:
+		return value, true
+	case int64:
+		return int(value), true
+	case string:
+		parsed, err := strconv.Atoi(value)
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func int64FromPayload(payload map[string]any, key string) (int64, bool) {

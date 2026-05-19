@@ -89,6 +89,16 @@
       } catch (_) {}
     },
 
+    resizeActiveTerminal(id = this.activeSessionId) {
+      if (!id || !this.terminals[id]) return;
+      this.fitAddons[id]?.fit?.();
+      const term = this.terminals[id];
+      term.refresh?.(0, term.rows - 1);
+      if (this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify({ type: 'ssh:resize', sessionId: id, payload: { cols: term.cols, rows: term.rows } }));
+      }
+    },
+
     get pathSegments() {
       const current = this.activePath || '.';
       const normalized = current.replace(/\\/g, '/');
@@ -129,7 +139,7 @@
           document.documentElement.style.setProperty('--vv-top', `${window.visualViewport.offsetTop}px`);
           document.documentElement.style.setProperty('--vv-left', `${window.visualViewport.pageLeft}px`);
           if (this.activeSessionId && this.activeSessionType() !== 'RDP') {
-            setTimeout(() => this.fitAddons[this.activeSessionId]?.fit?.(), 20);
+            setTimeout(() => this.resizeActiveTerminal(this.activeSessionId), 20);
           }
         };
         window.visualViewport.addEventListener('resize', updateVV);
@@ -197,7 +207,7 @@
       this.theme = this.theme === 'dark' ? 'light' : 'dark';
       localStorage.setItem('slatessh-theme', this.theme);
       setTimeout(() => {
-        for (const id of Object.keys(this.fitAddons)) this.fitAddons[id]?.fit?.();
+        for (const id of Object.keys(this.fitAddons)) this.resizeActiveTerminal(id);
       }, 30);
     },
 
@@ -535,8 +545,12 @@
       if (this.activeSessionType() !== 'RDP') this.refreshFiles();
       if (this.rdpClients[id]) this.fitRdp(id);
       if (this.terminals[id]) {
-        this.terminals[id].focus();
-        this.fitAddons[id]?.fit?.();
+        this.$nextTick(() => {
+          setTimeout(() => {
+            this.resizeActiveTerminal(id);
+            this.terminals[id]?.focus();
+          }, 0);
+        });
       }
     },
 
@@ -591,7 +605,7 @@
       if (fit) term.loadAddon(fit);
       if (search) term.loadAddon(search);
       term.open(el);
-      setTimeout(() => fit?.fit?.(), 30);
+      setTimeout(() => this.resizeActiveTerminal(id), 30);
       setTimeout(() => term.focus(), 60);
       term.onData((data) => {
         let payloadData = data;
@@ -622,7 +636,7 @@
       this.terminals[id] = term;
       this.searchAddons[id] = search;
       this.fitAddons[id] = fit;
-      window.addEventListener('resize', () => fit?.fit?.());
+      window.addEventListener('resize', () => this.resizeActiveTerminal(id));
     },
 
     toggleFullscreen() {
@@ -632,7 +646,7 @@
         if (this.activeSessionType() === 'RDP') {
           this.fitRdp(this.activeSessionId);
         } else {
-          this.fitAddons[this.activeSessionId]?.fit?.();
+          this.resizeActiveTerminal(this.activeSessionId);
         }
       });
     },

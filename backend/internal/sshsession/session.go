@@ -102,6 +102,10 @@ func (s *shellStream) Write(_ []byte) (int, error) {
     return 0, fmt.Errorf("write not supported")
 }
 
+func (s *shellStream) Resize(cols, rows int) error {
+    return s.session.WindowChange(rows, cols)
+}
+
 func (s *shellStream) Close() error {
     return s.session.Close()
 }
