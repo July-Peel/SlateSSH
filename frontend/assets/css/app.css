@@ -54,8 +54,8 @@ input:not(.inputarea), textarea:not(.inputarea), select {
 }
 input:not(.inputarea):focus, textarea:not(.inputarea):focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.2); background: var(--panel); }
 
-button { padding: 10px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); outline: none; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-button:hover { background: var(--panel-2); }
+button:not(.monaco-editor *) { padding: 10px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); outline: none; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+button:not(.monaco-editor *):hover { background: var(--panel-2); }
 button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-text); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 button.primary:hover { filter: brightness(0.9); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
 button.danger { border-color: var(--danger); background: var(--danger); color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }

@@ -758,12 +758,11 @@
         return;
       }
 
-      if (window.appMonacoInstance) {
-        window.appMonacoInstance.dispose();
-        window.appMonacoInstance = null;
-      }
-
       window.require(['vs/editor/editor.main'], () => {
+        if (window.appMonacoInstance) {
+          window.appMonacoInstance.dispose();
+          window.appMonacoInstance = null;
+        }
         const container = document.getElementById('monaco-editor-container');
         if (!container || !this.activeEditorTab) return;
         window.appMonacoInstance = window.monaco.editor.create(container, {
