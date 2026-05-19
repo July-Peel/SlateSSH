@@ -1,4 +1,4 @@
-﻿package rdp
+package rdp
 
 import (
 	"bufio"
@@ -35,6 +35,9 @@ type tunnelOptions struct {
 	Timezone string
 }
 
+// NewHandler 用于创建对应模块的 HTTP 处理器。
+// 输入参数：connectionsService 表示connectionsService 参数；authService 表示authService 参数；guacdHost 表示guacdHost 参数；guacdPort 表示guacdPort 参数。
+// 输出参数：返回 *Handler。
 func NewHandler(connectionsService *connections.Service, authService *auth.Service, guacdHost string, guacdPort int) *Handler {
 	if strings.TrimSpace(guacdHost) == "" {
 		guacdHost = "guacd"
@@ -51,6 +54,9 @@ func NewHandler(connectionsService *connections.Service, authService *auth.Servi
 	}
 }
 
+// ServeHTTP 用于处理 WebSocket 或隧道 HTTP 请求。
+// 输入参数：w 表示HTTP 响应写入器；r 表示HTTP 请求对象。
+// 输出参数：无。
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.authService.CurrentUser(r) == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -115,6 +121,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	<-errCh
 }
 
+// handshake 用于与 guacd 完成 RDP 协议握手。
+// 输入参数：conn 表示网络连接；reader 表示缓冲读取器；connection 表示连接配置；options 表示隧道显示选项。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Handler) handshake(conn net.Conn, reader *bufio.Reader, connection *models.DecryptedConnection, options tunnelOptions) error {
 	if _, err := io.WriteString(conn, formatInstruction("select", "rdp")); err != nil {
 		return err
@@ -154,6 +163,9 @@ func (h *Handler) handshake(conn net.Conn, reader *bufio.Reader, connection *mod
 	return nil
 }
 
+// copyGuacdToBrowser 用于将 guacd 指令转发给浏览器。
+// 输入参数：ctx 表示上下文对象；reader 表示缓冲读取器；browser 表示浏览器 WebSocket 连接；writeMu 表示写锁。
+// 输出参数：返回 error；error 表示执行失败原因。
 func copyGuacdToBrowser(ctx context.Context, reader *bufio.Reader, browser *websocket.Conn, writeMu *sync.Mutex) error {
 	for {
 		select {
@@ -174,6 +186,9 @@ func copyGuacdToBrowser(ctx context.Context, reader *bufio.Reader, browser *webs
 	}
 }
 
+// copyBrowserToGuacd 用于将浏览器 Guacamole 指令转发给 guacd。
+// 输入参数：ctx 表示上下文对象；browser 表示浏览器 WebSocket 连接；guacd 表示guacd 网络连接；writeMu 表示写锁。
+// 输出参数：返回 error；error 表示执行失败原因。
 func copyBrowserToGuacd(ctx context.Context, browser *websocket.Conn, guacd net.Conn, writeMu *sync.Mutex) error {
 	for {
 		select {
@@ -207,11 +222,17 @@ func copyBrowserToGuacd(ctx context.Context, browser *websocket.Conn, guacd net.
 	}
 }
 
+// isTunnelPing 用于识别 Guacamole WebSocketTunnel 内部心跳指令。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 bool。
 func isTunnelPing(message string) bool {
 	elements, _, err := readInstruction(bufio.NewReader(strings.NewReader(message)))
 	return err == nil && len(elements) >= 2 && elements[0] == "" && elements[1] == "ping"
 }
 
+// readInstruction 用于读取并解析一条 Guacamole 协议指令。
+// 输入参数：reader 表示缓冲读取器。
+// 输出参数：返回 []string, string, error；error 表示执行失败原因。
 func readInstruction(reader *bufio.Reader) ([]string, string, error) {
 	var elements []string
 	var raw strings.Builder
@@ -245,6 +266,9 @@ func readInstruction(reader *bufio.Reader) ([]string, string, error) {
 	}
 }
 
+// formatInstruction 用于按 Guacamole 协议格式编码指令。
+// 输入参数：elements 表示协议元素列表。
+// 输出参数：返回 string。
 func formatInstruction(elements ...string) string {
 	parts := make([]string, 0, len(elements))
 	for _, element := range elements {
@@ -253,6 +277,9 @@ func formatInstruction(elements ...string) string {
 	return strings.Join(parts, ",") + ";"
 }
 
+// parseOptions 用于从 RDP 隧道请求中解析显示参数。
+// 输入参数：r 表示HTTP 请求对象。
+// 输出参数：返回 tunnelOptions。
 func parseOptions(r *http.Request) tunnelOptions {
 	query := r.URL.Query()
 	return tunnelOptions{
@@ -263,6 +290,9 @@ func parseOptions(r *http.Request) tunnelOptions {
 	}
 }
 
+// parameterValue 用于根据 guacd 请求的参数名返回 RDP 连接参数值。
+// 输入参数：name 表示字段名或参数名；connection 表示连接配置；options 表示隧道显示选项。
+// 输出参数：返回 string。
 func parameterValue(name string, connection *models.DecryptedConnection, options tunnelOptions) string {
 	switch strings.ToLower(name) {
 	case "hostname":
@@ -302,6 +332,9 @@ func parameterValue(name string, connection *models.DecryptedConnection, options
 	}
 }
 
+// firstNonEmpty 用于返回第一个非空字符串或默认值。
+// 输入参数：value 表示输入值；fallback 表示默认值。
+// 输出参数：返回 string。
 func firstNonEmpty(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {
 		return fallback

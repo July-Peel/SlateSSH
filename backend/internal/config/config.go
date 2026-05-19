@@ -1,4 +1,4 @@
-﻿package config
+package config
 
 import (
 	"crypto/rand"
@@ -21,6 +21,9 @@ type Config struct {
 	GuacdPort     int
 }
 
+// Load 用于读取运行配置并准备持久化密钥。
+// 输入参数：无。
+// 输出参数：返回 Config, error；error 表示执行失败原因。
 func Load() (Config, error) {
 	dataDir := getenv("STACK_GO_DATA_DIR", filepath.Join(".", "data"))
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
@@ -58,6 +61,9 @@ func Load() (Config, error) {
 	}, nil
 }
 
+// getenv 用于读取环境变量并在为空时返回默认值。
+// 输入参数：key 表示键名；fallback 表示默认值。
+// 输出参数：返回 string。
 func getenv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -65,6 +71,9 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
+// ensurePersistentSecret 用于获取或生成需要持久保存的随机密钥。
+// 输入参数：key 表示键名；path 表示路径；size 表示字节长度。
+// 输出参数：返回 string, error；error 表示执行失败原因。
 func ensurePersistentSecret(key, path string, size int) (string, error) {
 	if value := os.Getenv(key); value != "" {
 		return value, nil
@@ -89,5 +98,3 @@ func ensurePersistentSecret(key, path string, size int) (string, error) {
 	_ = os.Setenv(key, value)
 	return value, nil
 }
-
-

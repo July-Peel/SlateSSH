@@ -62,6 +62,9 @@ type Message struct {
 
 const maxInlineEditableBytes = 1024 * 1024
 
+// NewHub 用于执行 NewHub 相关后端逻辑。
+// 输入参数：connectionsService 表示connectionsService 参数；authService 表示authService 参数。
+// 输出参数：返回 *Hub。
 func NewHub(connectionsService *connections.Service, authService *auth.Service) *Hub {
 	return &Hub{
 		upgrader:           websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
@@ -72,6 +75,9 @@ func NewHub(connectionsService *connections.Service, authService *auth.Service) 
 	}
 }
 
+// ServeHTTP 用于处理 WebSocket 或隧道 HTTP 请求。
+// 输入参数：w 表示HTTP 响应写入器；r 表示HTTP 请求对象。
+// 输出参数：无。
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.authService.CurrentUser(r) == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -96,6 +102,9 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ServeDownload 用于处理 SFTP 文件下载请求。
+// 输入参数：w 表示HTTP 响应写入器；r 表示HTTP 请求对象。
+// 输出参数：无。
 func (h *Hub) ServeDownload(w http.ResponseWriter, r *http.Request) {
 	if h.authService.CurrentUser(r) == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -137,6 +146,9 @@ func (h *Hub) ServeDownload(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, file)
 }
 
+// ServeUpload 用于处理 SFTP 文件上传请求。
+// 输入参数：w 表示HTTP 响应写入器；r 表示HTTP 请求对象。
+// 输出参数：无。
 func (h *Hub) ServeUpload(w http.ResponseWriter, r *http.Request) {
 	if h.authService.CurrentUser(r) == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -189,6 +201,9 @@ func (h *Hub) ServeUpload(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"uploaded": true, "path": target, "bytes": written})
 }
 
+// handleMessage 用于分发前端 WebSocket 消息到对应处理方法。
+// 输入参数：ctx 表示上下文对象；socket 表示WebSocket 连接；message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleMessage(ctx context.Context, socket *websocket.Conn, message Message) error {
 	switch message.Type {
 	case "ssh:connect":
@@ -221,6 +236,9 @@ func (h *Hub) handleMessage(ctx context.Context, socket *websocket.Conn, message
 	}
 }
 
+// handleSSHConnect 用于建立 SSH 会话并创建前端标签会话。
+// 输入参数：ctx 表示上下文对象；socket 表示WebSocket 连接；message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSSHConnect(ctx context.Context, socket *websocket.Conn, message Message) error {
 	connectionID, _ := int64FromPayload(message.Payload, "connectionId")
 	if connectionID <= 0 {
@@ -278,6 +296,9 @@ func (h *Hub) handleSSHConnect(ctx context.Context, socket *websocket.Conn, mess
 	return nil
 }
 
+// streamShell 用于持续读取 SSH Shell 输出并推送到前端。
+// 输入参数：ctx 表示上下文对象；session 表示客户端会话。
+// 输出参数：无。
 func (h *Hub) streamShell(ctx context.Context, session *ClientSession) {
 	buffer := make([]byte, 32*1024)
 	for {
@@ -303,6 +324,9 @@ func (h *Hub) streamShell(ctx context.Context, session *ClientSession) {
 	}
 }
 
+// pollStatus 用于定时采集服务器状态并推送到前端。
+// 输入参数：ctx 表示上下文对象；session 表示客户端会话。
+// 输出参数：无。
 func (h *Hub) pollStatus(ctx context.Context, session *ClientSession) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
@@ -318,6 +342,9 @@ func (h *Hub) pollStatus(ctx context.Context, session *ClientSession) {
 	}
 }
 
+// pushStatus 用于采集一次服务器状态并写入 WebSocket。
+// 输入参数：session 表示客户端会话。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) pushStatus(session *ClientSession) error {
 	current, err := h.monitor.Fetch(session.ID, session.SSHClient)
 	if err != nil {
@@ -326,6 +353,9 @@ func (h *Hub) pushStatus(session *ClientSession) error {
 	return h.write(session.Socket, Message{Type: "status_update", SessionID: session.ID, Payload: toMap(current)})
 }
 
+// handleSSHInput 用于将前端输入写入 SSH Shell。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSSHInput(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -339,6 +369,9 @@ func (h *Hub) handleSSHInput(message Message) error {
 	return err
 }
 
+// handleSSHResize 用于处理前端终端尺寸变化并同步远端 PTY。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSSHResize(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -359,6 +392,9 @@ func (h *Hub) handleSSHResize(message Message) error {
 	return resizer.Resize(cols, rows)
 }
 
+// handleStatusRefresh 用于处理手动刷新服务器状态请求。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleStatusRefresh(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -367,6 +403,9 @@ func (h *Hub) handleStatusRefresh(message Message) error {
 	return h.pushStatus(session)
 }
 
+// handleSFTPReaddir 用于读取远端目录并返回文件列表。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSFTPReaddir(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -397,6 +436,9 @@ func (h *Hub) handleSFTPReaddir(message Message) error {
 	return h.write(session.Socket, Message{Type: "sftp:readdir:result", SessionID: session.ID, Payload: map[string]any{"path": displayPath, "entries": items}})
 }
 
+// handleSFTPReadFile 用于读取远端文本文件并返回可编辑内容。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSFTPReadFile(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -429,6 +471,9 @@ func (h *Hub) handleSFTPReadFile(message Message) error {
 	return h.write(session.Socket, Message{Type: "sftp:readfile:result", SessionID: session.ID, Payload: map[string]any{"path": target, "content": string(data), "size": len(data)}})
 }
 
+// handleSFTPWriteFile 用于将编辑后的内容写入远端文件。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSFTPWriteFile(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -447,6 +492,9 @@ func (h *Hub) handleSFTPWriteFile(message Message) error {
 	return h.write(session.Socket, Message{Type: "sftp:writefile:result", SessionID: session.ID, Payload: map[string]any{"path": target, "saved": true, "bytes": len(content)}})
 }
 
+// handleSFTPMkdir 用于创建远端目录。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSFTPMkdir(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -459,6 +507,9 @@ func (h *Hub) handleSFTPMkdir(message Message) error {
 	return h.write(session.Socket, Message{Type: "sftp:mkdir:result", SessionID: session.ID, Payload: map[string]any{"path": target, "created": true}})
 }
 
+// handleSFTPRmdir 用于删除远端目录。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSFTPRmdir(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -471,6 +522,9 @@ func (h *Hub) handleSFTPRmdir(message Message) error {
 	return h.write(session.Socket, Message{Type: "sftp:rmdir:result", SessionID: session.ID, Payload: map[string]any{"path": target, "removed": true}})
 }
 
+// handleSFTPUnlink 用于删除远端文件。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSFTPUnlink(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -483,6 +537,9 @@ func (h *Hub) handleSFTPUnlink(message Message) error {
 	return h.write(session.Socket, Message{Type: "sftp:unlink:result", SessionID: session.ID, Payload: map[string]any{"path": target, "removed": true}})
 }
 
+// handleSFTPRename 用于重命名或移动远端文件路径。
+// 输入参数：message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) handleSFTPRename(message Message) error {
 	session := h.getSession(message.SessionID)
 	if session == nil {
@@ -496,12 +553,18 @@ func (h *Hub) handleSFTPRename(message Message) error {
 	return h.write(session.Socket, Message{Type: "sftp:rename:result", SessionID: session.ID, Payload: map[string]any{"oldPath": oldPath, "newPath": newPath, "renamed": true}})
 }
 
+// getSession 用于根据会话 ID 获取当前客户端会话。
+// 输入参数：id 表示标识符。
+// 输出参数：返回 *ClientSession。
 func (h *Hub) getSession(id string) *ClientSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.sessions[id]
 }
 
+// closeSocketSessions 用于关闭指定 WebSocket 关联的全部 SSH 会话。
+// 输入参数：socket 表示WebSocket 连接。
+// 输出参数：无。
 func (h *Hub) closeSocketSessions(socket *websocket.Conn) {
 	h.mu.Lock()
 	ids := make([]string, 0)
@@ -516,6 +579,9 @@ func (h *Hub) closeSocketSessions(socket *websocket.Conn) {
 	}
 }
 
+// closeSession 用于释放 SSH、SFTP 和会话上下文资源。
+// 输入参数：id 表示标识符；reason 表示reason 参数；notify 表示notify 参数。
+// 输出参数：无。
 func (h *Hub) closeSession(id, reason string, notify bool) {
 	h.mu.Lock()
 	session := h.sessions[id]
@@ -545,6 +611,9 @@ func (h *Hub) closeSession(id, reason string, notify bool) {
 	}
 }
 
+// write 用于向 WebSocket 写入 JSON 消息。
+// 输入参数：socket 表示WebSocket 连接；message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
 func (h *Hub) write(socket *websocket.Conn, message Message) error {
 	h.writeMu.Lock()
 	defer h.writeMu.Unlock()
@@ -552,6 +621,9 @@ func (h *Hub) write(socket *websocket.Conn, message Message) error {
 	return socket.WriteJSON(message)
 }
 
+// stringFromPayload 用于从消息载荷中读取字符串字段。
+// 输入参数：payload 表示消息载荷；key 表示键名。
+// 输出参数：返回 string, bool。
 func stringFromPayload(payload map[string]any, key string) (string, bool) {
 	raw, ok := payload[key]
 	if !ok || raw == nil {
@@ -561,6 +633,9 @@ func stringFromPayload(payload map[string]any, key string) (string, bool) {
 	return value, ok
 }
 
+// intFromPayload 用于从消息载荷中读取整数字段。
+// 输入参数：payload 表示消息载荷；key 表示键名。
+// 输出参数：返回 int, bool。
 func intFromPayload(payload map[string]any, key string) (int, bool) {
 	raw, ok := payload[key]
 	if !ok || raw == nil {
@@ -581,6 +656,9 @@ func intFromPayload(payload map[string]any, key string) (int, bool) {
 	}
 }
 
+// int64FromPayload 用于从消息载荷中读取 64 位整数字段。
+// 输入参数：payload 表示消息载荷；key 表示键名。
+// 输出参数：返回 int64, bool。
 func int64FromPayload(payload map[string]any, key string) (int64, bool) {
 	raw, ok := payload[key]
 	if !ok || raw == nil {
@@ -601,6 +679,9 @@ func int64FromPayload(payload map[string]any, key string) (int64, bool) {
 	}
 }
 
+// toMap 用于将服务器状态结构转换为通用 JSON 映射。
+// 输入参数：status 表示HTTP 状态码。
+// 输出参数：返回 map[string]any。
 func toMap(status models.ServerStatus) map[string]any {
 	raw, _ := json.Marshal(status)
 	result := map[string]any{}
@@ -608,6 +689,9 @@ func toMap(status models.ServerStatus) map[string]any {
 	return result
 }
 
+// isLikelyText 用于判断文件内容是否适合按文本内联编辑。
+// 输入参数：data 表示响应数据。
+// 输出参数：返回 bool。
 func isLikelyText(data []byte) bool {
 	if len(data) == 0 {
 		return true
@@ -628,6 +712,9 @@ func isLikelyText(data []byte) bool {
 	return float64(binaryCount)/float64(len(sample)) < 0.05
 }
 
+// joinPath 用于拼接远端路径片段。
+// 输入参数：base 表示基础路径；name 表示字段名或参数名。
+// 输出参数：返回 string。
 func joinPath(base, name string) string {
 	if base == "" || base == "." {
 		return "./" + strings.TrimPrefix(name, "./")
