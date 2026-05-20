@@ -23,6 +23,10 @@ function shadowApp() {
     theme: localStorage.getItem('slatessh-theme') || 'light',
     showStatusWidget: true,
     showSftpWidget: true,
+    pathInput: '',
+    showPathDropdown: false,
+    activeSuggestionIndex: -1,
+    pathHistory: JSON.parse(localStorage.getItem('slatessh-path-history') || '[]'),
     showEditorPanel: false,
     showConnectionForm: false,
     showConnectionManager: false,
@@ -439,6 +443,8 @@ function shadowApp() {
 
       if (message.type === 'sftp:readdir:result' && message.sessionId === this.activeSessionId) {
         this.activePath = message.payload?.path || '.';
+        this.pathInput = this.activePath;
+        this.addToPathHistory(this.activePath);
         let entries = message.payload?.entries || [];
         entries.sort((a, b) => {
           if (a.isDir && !b.isDir) return -1;
@@ -730,6 +736,83 @@ function shadowApp() {
       this.refreshFiles();
     },
 
+    addToPathHistory(path) {
+      if (!path || path === '.' || path === './') return;
+      this.pathHistory = this.pathHistory.filter(p => p !== path);
+      this.pathHistory.unshift(path);
+      if (this.pathHistory.length > 15) {
+        this.pathHistory.pop();
+      }
+      localStorage.setItem('slatessh-path-history', JSON.stringify(this.pathHistory));
+    },
+
+    getPathSuggestions() {
+      const query = (this.pathInput || '').trim();
+      const suggestions = new Set();
+
+      if (this.activePath) {
+        const currentSubdirs = this.files.filter(f => f.isDir).map(f => f.filename);
+        for (const sub of currentSubdirs) {
+          const full = this.joinRemotePath(this.activePath, sub);
+          suggestions.add(full);
+        }
+      }
+
+      const commonDirs = ['/', '/root', '/home', '/etc', '/var', '/tmp', '/usr/local'];
+      for (const dir of commonDirs) {
+        suggestions.add(dir);
+      }
+
+      for (const path of this.pathHistory) {
+        suggestions.add(path);
+      }
+
+      let list = Array.from(suggestions);
+
+      if (query) {
+        const qLower = query.toLowerCase();
+        list = list.filter(item => {
+          return item.toLowerCase().includes(qLower) && item !== query;
+        });
+      }
+
+      return list.slice(0, 8);
+    },
+
+    submitPath() {
+      const target = this.pathInput ? this.pathInput.trim() : '';
+      if (!target) return;
+      this.jumpToPath(target);
+      this.showPathDropdown = false;
+      this.activeSuggestionIndex = -1;
+    },
+
+    navigateSuggestions(direction) {
+      const list = this.getPathSuggestions();
+      if (!list.length) return;
+      this.showPathDropdown = true;
+      this.activeSuggestionIndex += direction;
+      if (this.activeSuggestionIndex < 0) {
+        this.activeSuggestionIndex = list.length - 1;
+      } else if (this.activeSuggestionIndex >= list.length) {
+        this.activeSuggestionIndex = 0;
+      }
+    },
+
+    selectSuggestionOrSubmit() {
+      const list = this.getPathSuggestions();
+      if (this.showPathDropdown && this.activeSuggestionIndex >= 0 && this.activeSuggestionIndex < list.length) {
+        this.selectPathSuggestion(list[this.activeSuggestionIndex]);
+      } else {
+        this.submitPath();
+      }
+    },
+
+    selectPathSuggestion(path) {
+      this.pathInput = path;
+      this.submitPath();
+    },
+
     openDir(name) {
       this.activePath = this.joinRemotePath(this.activePath, name);
       this.refreshFiles();
@@ -877,16 +960,21 @@ function shadowApp() {
     },
 
     updateMonacoEditor() {
+      const currentTheme = this.theme;
+      const tab = this.activeEditorTab;
+      const tabContent = tab?.content;
+      const tabName = tab?.name;
+
       if (!window.appMonacoInstance) return;
-      if (this.activeEditorTab) {
+      if (tab) {
         this.isMonacoUpdating = true;
         const currentVal = window.appMonacoInstance.getValue();
-        if (currentVal !== this.activeEditorTab.content) {
-          window.appMonacoInstance.setValue(this.activeEditorTab.content || '');
+        if (currentVal !== tabContent) {
+          window.appMonacoInstance.setValue(tabContent || '');
         }
-        const lang = this.getMonacoLanguage(this.activeEditorTab.name);
+        const lang = this.getMonacoLanguage(tabName);
         window.monaco.editor.setModelLanguage(window.appMonacoInstance.getModel(), lang);
-        window.monaco.editor.setTheme(this.theme === 'dark' ? 'slatessh-dark' : 'slatessh-light');
+        window.monaco.editor.setTheme(currentTheme === 'dark' ? 'slatessh-dark' : 'slatessh-light');
         this.isMonacoUpdating = false;
       }
     },
@@ -1113,7 +1201,7 @@ function shadowApp() {
     getFileIcon(entry) {
       if (entry.isDir) return 'folder';
       const name = entry.filename.toLowerCase();
-      if (name.endsWith('.json')) return 'settings_schema';
+      if (name.endsWith('.json')) return 'braces';
       if (name.endsWith('.md')) return 'markdown';
       if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'].some(ext => name.endsWith(ext))) return 'image';
       if (['.zip', '.tar', '.gz', '.rar', '.7z', '.tgz'].some(ext => name.endsWith(ext))) return 'archive';

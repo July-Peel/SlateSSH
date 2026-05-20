@@ -484,3 +484,115 @@ button.tab span:last-child:hover { opacity: 1; color: #fff; }
     transform: scale(0.92); 
   }
 }
+
+/* Path Address Bar & Autocomplete CSS */
+.path-bar-container {
+  position: relative;
+  width: 100%;
+  margin-top: 8px;
+}
+.path-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px 8px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.path-input-wrapper:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
+  background: var(--panel-solid);
+}
+.path-icon {
+  color: var(--muted);
+  font-size: 20px;
+  margin-left: 4px;
+}
+.path-input {
+  flex: 1;
+  border: none !important;
+  background: transparent !important;
+  padding: 6px 0 !important;
+  color: var(--text);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+  outline: none;
+  box-shadow: none !important;
+}
+.path-input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+.path-go-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none !important;
+  background: transparent !important;
+  color: var(--muted);
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+.path-go-btn:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent) !important;
+  color: var(--accent) !important;
+  transform: scale(1.05);
+}
+.path-go-btn:active {
+  transform: scale(0.95);
+}
+
+/* Suggestions Dropdown */
+.path-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--panel-solid);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.path-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text);
+}
+.path-dropdown-item:hover, .path-dropdown-item.active {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+}
+.path-dropdown-item .item-icon {
+  font-size: 18px;
+  color: var(--muted);
+}
+.path-dropdown-item:hover .item-icon, .path-dropdown-item.active .item-icon {
+  color: var(--accent);
+}
+.path-dropdown-item .item-text {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

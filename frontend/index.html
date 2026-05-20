@@ -90,11 +90,45 @@
         <main class="main-grid" :class="{ 'no-status': !showStatusWidget, 'no-sftp': !showSftpWidget }">
           <aside class="file-panel" x-show="!isMobile ? showSftpWidget : true" :class="isMobile ? (showMobileSftp ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
             <div class="panel-head">
-              <div>
+              <div style="width: 100%;">
                 <h2>SFTP 文件</h2>
-                <p class="path" x-text="activePath"></p>
+                <div class="path-bar-container" @click.away="showPathDropdown = false">
+                  <div class="path-input-wrapper">
+                    <span class="material-symbols-rounded path-icon">folder_open</span>
+                    <input 
+                      type="text" 
+                      x-model="pathInput"
+                      @focus="showPathDropdown = true; activeSuggestionIndex = -1"
+                      @keydown.down.prevent="navigateSuggestions(1)"
+                      @keydown.up.prevent="navigateSuggestions(-1)"
+                      @keydown.enter.prevent="selectSuggestionOrSubmit()"
+                      @keydown.escape="showPathDropdown = false"
+                      class="path-input"
+                      placeholder="跳转路径，如 /etc..."
+                    >
+                    <button @click="submitPath()" class="path-go-btn" title="跳转">
+                      <span class="material-symbols-rounded" style="font-size: 20px;">arrow_forward</span>
+                    </button>
+                  </div>
+                  <div 
+                    x-show="showPathDropdown && getPathSuggestions().length > 0" 
+                    class="path-dropdown"
+                    style="display: none;"
+                  >
+                    <template x-for="(suggestion, idx) in getPathSuggestions()" :key="suggestion">
+                      <div 
+                        @click="selectPathSuggestion(suggestion)"
+                        class="path-dropdown-item"
+                        :class="activeSuggestionIndex === idx ? 'active' : ''"
+                      >
+                        <span class="material-symbols-rounded item-icon">folder</span>
+                        <span x-text="suggestion" class="item-text"></span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
               </div>
-              <button x-show="isMobile" @click="showMobileSftp = false">×</button>
+              <button x-show="isMobile" @click="showMobileSftp = false" style="margin-left: 8px; margin-top: 4px; font-size: 20px; border: 0; background: transparent; padding: 4px;">×</button>
             </div>
             <div class="file-actions">
               <button @click="goParentDir()">上级</button>
