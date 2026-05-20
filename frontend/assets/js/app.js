@@ -1,4 +1,4 @@
-﻿function shadowApp() {
+function shadowApp() {
   return {
     booting: true,
     needsSetup: false,
@@ -98,6 +98,11 @@
       this.fitAddons[id]?.fit?.();
       const term = this.terminals[id];
       term.refresh?.(0, term.rows - 1);
+      setTimeout(() => {
+        try {
+          term.scrollToBottom?.();
+        } catch (_) {}
+      }, 50);
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.socket.send(JSON.stringify({ type: 'ssh:resize', sessionId: id, payload: { cols: term.cols, rows: term.rows } }));
       }
@@ -139,17 +144,34 @@
       });
       if (window.visualViewport) {
         const updateVV = () => {
+          if (window.scrollY !== 0 || window.scrollX !== 0) {
+            window.scrollTo(0, 0);
+          }
           document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
           document.documentElement.style.setProperty('--vv-top', `${window.visualViewport.offsetTop}px`);
           document.documentElement.style.setProperty('--vv-left', `${window.visualViewport.pageLeft}px`);
           if (this.activeSessionId && this.activeSessionType() !== 'RDP') {
-            setTimeout(() => this.resizeActiveTerminal(this.activeSessionId), 20);
+            setTimeout(() => this.resizeActiveTerminal(this.activeSessionId), 30);
           }
         };
         window.visualViewport.addEventListener('resize', updateVV);
         window.visualViewport.addEventListener('scroll', updateVV);
         updateVV();
       }
+      
+      // Global focus listener for mobile viewport locking
+      document.addEventListener('focusin', (e) => {
+        if (this.isMobile && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.classList.contains('xterm-helper-textarea'))) {
+          setTimeout(() => {
+            window.scrollTo(0, 0);
+            if (window.visualViewport) {
+              document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
+              document.documentElement.style.setProperty('--vv-top', `${window.visualViewport.offsetTop}px`);
+            }
+          }, 60);
+        }
+      });
+
       document.addEventListener('click', () => this.hideContextMenu());
       document.addEventListener('mousemove', (event) => this.dragEditor(event));
       document.addEventListener('mouseup', () => this.stopEditorDrag());
