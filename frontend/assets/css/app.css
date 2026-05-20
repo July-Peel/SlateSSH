@@ -217,8 +217,19 @@ button.fab-main {
   transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); 
   padding: 0; 
 }
-button.fab-main:hover { filter: brightness(1.1); transform: scale(1.08) rotate(15deg); }
+button.fab-main:hover { 
+  background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 80%, black) 100%) !important; 
+  color: var(--accent-text) !important;
+  filter: brightness(1.1); 
+  transform: scale(1.08) rotate(15deg); 
+  border-color: transparent !important;
+}
 button.fab-main.open { transform: rotate(135deg); background: var(--panel-solid); color: var(--text); box-shadow: var(--shadow); border: 1px solid var(--border); }
+button.fab-main.open:hover {
+  background: var(--panel-2) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
 
 .workspace { height: 100%; display: grid; grid-template-rows: 64px minmax(0, 1fr); overflow: hidden; }
 .topbar { 
@@ -300,17 +311,9 @@ button.fab-main.open { transform: rotate(135deg); background: var(--panel-solid)
   background: rgba(245, 158, 11, 0.12) !important;
   color: #f59e0b !important;
 }
-.file-icon.config-type {
-  background: rgba(13, 148, 136, 0.12) !important;
-  color: #0d9488 !important;
-}
-.file-icon.key-type {
-  background: rgba(16, 185, 129, 0.12) !important;
-  color: #10b981 !important;
-}
-.file-icon.code-type {
-  background: rgba(99, 102, 241, 0.12) !important;
-  color: #6366f1 !important;
+.file-icon.file-type {
+  background: rgba(100, 116, 139, 0.12) !important;
+  color: #64748b !important;
 }
 .file-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 8px; }
 .file-tools button { padding: 4px 8px; font-size: 12px; border-radius: 6px; }

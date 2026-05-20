@@ -1199,31 +1199,11 @@ function shadowApp() {
     },
 
     getFileIcon(entry) {
-      if (entry.isDir) return 'folder';
-      const name = entry.filename.toLowerCase();
-      if (name.endsWith('.json')) return 'braces';
-      if (name.endsWith('.md')) return 'markdown';
-      if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'].some(ext => name.endsWith(ext))) return 'image';
-      if (['.zip', '.tar', '.gz', '.rar', '.7z', '.tgz'].some(ext => name.endsWith(ext))) return 'archive';
-      if (['.sh', '.bash', '.zsh', '.go', '.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.c', '.cpp', '.h', '.cs', '.php', '.rs', '.rb', '.yml', '.yaml', '.sql'].some(ext => name.endsWith(ext))) return 'code';
-      if (['.pem', '.key', '.pub'].some(ext => name.endsWith(ext))) return 'vpn_key';
-      if (['.log', '.txt', '.conf', '.env', '.ini'].some(ext => name.endsWith(ext))) return 'description';
-      return 'draft';
+      return entry.isDir ? 'folder' : 'description';
     },
 
     getFileIconClass(entry) {
-      if (entry.isDir) return 'file-icon folder-type';
-      const name = entry.filename.toLowerCase();
-      if (name.endsWith('.json') || name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.ini') || name.endsWith('.conf') || name.endsWith('.env')) {
-        return 'file-icon config-type';
-      }
-      if (name.endsWith('.pem') || name.endsWith('.key') || name.endsWith('.pub')) {
-        return 'file-icon key-type';
-      }
-      if (['.sh', '.bash', '.zsh', '.go', '.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.c', '.cpp', '.h', '.cs', '.php', '.rs', '.rb', '.sql'].some(ext => name.endsWith(ext))) {
-        return 'file-icon code-type';
-      }
-      return 'file-icon';
+      return entry.isDir ? 'file-icon folder-type' : 'file-icon file-type';
     }
   };
 }
