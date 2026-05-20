@@ -358,6 +358,7 @@ button.tab span:last-child:hover { opacity: 1; color: #fff; }
 .status-circle .inner span { font-size: 10px; margin-top: 3px; color: var(--muted); font-weight: 600; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 999; display: grid; place-items: center; padding: 24px; background: rgba(15, 23, 42, .6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.test-result-backdrop { z-index: 2000 !important; }
 .connection-modal { 
   width: min(980px, 100%); 
   max-height: min(760px, 92vh); 
