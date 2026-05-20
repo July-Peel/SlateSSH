@@ -120,7 +120,9 @@
               <template x-for="entry in files" :key="entry.filename">
                 <div class="file-item" @contextmenu="showContextMenu($event, entry)">
                   <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)">
-                    <span class="file-icon" x-text="entry.isDir ? 'DIR' : 'TXT'"></span>
+                    <span :class="getFileIconClass(entry)">
+                      <span class="material-symbols-rounded" x-text="getFileIcon(entry)" style="font-size: 20px;"></span>
+                    </span>
                     <span>
                       <strong x-text="entry.filename"></strong>
                       <small x-text="(entry.isDir ? '文件夹' : formatSize(entry.size)) + ' · ' + formatUnix(entry.mtime)"></small>
@@ -354,12 +356,66 @@
   <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit/lib/addon-fit.js"></script>
   <script>window.module = window.module || { exports: {} };</script>
   <script src="https://cdn.jsdelivr.net/npm/guacamole-common-js@1.5.0/dist/cjs/guacamole-common.min.js"></script>
-  <script>window.Guacamole = window.Guacamole || window.module.exports;</script>
-  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
   <script>
-    if (window.require) {
-      window.require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
+    window.Guacamole = window.Guacamole || window.module.exports;
+    // Clean up temporary CommonJS polyfill to prevent conflicts with Monaco's AMD loader
+    if (window.module) {
+      delete window.module;
     }
+  </script>
+  <script>
+    (function() {
+      const cdns = [
+        {
+          loader: 'https://lib.baomitu.com/monaco-editor/0.44.0/min/vs/loader.js',
+          vs: 'https://lib.baomitu.com/monaco-editor/0.44.0/min/vs'
+        },
+        {
+          loader: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.js',
+          vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs'
+        },
+        {
+          loader: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js',
+          vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs'
+        }
+      ];
+
+      function tryLoadMonaco(index) {
+        if (index >= cdns.length) {
+          console.error('All Monaco Editor CDNs failed to load.');
+          return;
+        }
+        const cdn = cdns[index];
+        const script = document.createElement('script');
+        script.src = cdn.loader;
+
+        let timeoutId = setTimeout(() => {
+          console.warn('Monaco loader from ' + cdn.loader + ' timed out, trying next fallback...');
+          script.onload = null;
+          script.onerror = null;
+          script.remove();
+          tryLoadMonaco(index + 1);
+        }, 3000); // 3 seconds timeout for Chinese domestic or international failover
+
+        script.onload = () => {
+          clearTimeout(timeoutId);
+          if (window.require) {
+            window.require.config({ paths: { 'vs': cdn.vs } });
+            console.log('Monaco Editor loader loaded successfully from: ' + cdn.loader);
+          } else {
+            console.error('Loader script executed but window.require is not defined.');
+            tryLoadMonaco(index + 1);
+          }
+        };
+        script.onerror = () => {
+          clearTimeout(timeoutId);
+          console.warn('Failed to load Monaco loader from ' + cdn.loader + ', trying next fallback...');
+          tryLoadMonaco(index + 1);
+        };
+        document.head.appendChild(script);
+      }
+      tryLoadMonaco(0);
+    })();
   </script>
   <script src="/assets/js/app.js?v=20260514f"></script>
 </body>

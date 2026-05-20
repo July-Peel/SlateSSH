@@ -780,8 +780,34 @@ function shadowApp() {
 
     getMonacoLanguage(filename) {
       if (!filename) return 'plaintext';
-      const ext = filename.split('.').pop().toLowerCase();
-      const map = { js: 'javascript', ts: 'typescript', html: 'html', css: 'css', json: 'json', go: 'go', py: 'python', sh: 'shell', md: 'markdown', yaml: 'yaml', yml: 'yaml', xml: 'xml', sql: 'sql', java: 'java', c: 'c', cpp: 'cpp', cs: 'cpp', php: 'java' };
+      const parts = filename.toLowerCase().split('.');
+      if (filename.toLowerCase() === 'dockerfile') return 'dockerfile';
+      const ext = parts.pop();
+      const map = {
+        js: 'javascript', jsx: 'javascript',
+        ts: 'typescript', tsx: 'typescript',
+        html: 'html', htm: 'html',
+        css: 'css',
+        json: 'json', jsonc: 'json',
+        go: 'go',
+        py: 'python',
+        sh: 'shell', bash: 'shell', zsh: 'shell',
+        md: 'markdown', markdown: 'markdown',
+        yaml: 'yaml', yml: 'yaml',
+        xml: 'xml', svg: 'xml',
+        sql: 'sql',
+        java: 'java',
+        c: 'c',
+        cpp: 'cpp', cc: 'cpp', h: 'cpp', hpp: 'cpp',
+        cs: 'csharp',
+        php: 'php',
+        ps1: 'powershell',
+        rs: 'rust',
+        rb: 'ruby',
+        swift: 'swift',
+        kt: 'kotlin', kts: 'kotlin',
+        ini: 'ini', conf: 'ini', env: 'ini', properties: 'ini'
+      };
       return map[ext] || 'plaintext';
     },
 
@@ -797,6 +823,36 @@ function shadowApp() {
       window.require(['vs/editor/editor.main'], () => {
         const container = document.getElementById('monaco-editor-container');
         if (!container || !this.activeEditorTab) return;
+
+        // Register custom glassmorphic themes to seamlessly integrate with our CSS
+        if (!window.monacoThemesDefined) {
+          window.monaco.editor.defineTheme('slatessh-dark', {
+            base: 'vs-dark',
+            inherit: true,
+            rules: [],
+            colors: {
+              'editor.background': '#0f172a',
+              'editor.lineHighlightBackground': '#1e293b55',
+              'editorCursor.foreground': '#6366f1',
+              'editor.selectionBackground': '#6366f133',
+              'editor.inactiveSelectionBackground': '#6366f111'
+            }
+          });
+          window.monaco.editor.defineTheme('slatessh-light', {
+            base: 'vs',
+            inherit: true,
+            rules: [],
+            colors: {
+              'editor.background': '#ffffff',
+              'editor.lineHighlightBackground': '#f3f4f6aa',
+              'editorCursor.foreground': '#4f46e5',
+              'editor.selectionBackground': '#4f46e522',
+              'editor.inactiveSelectionBackground': '#4f46e511'
+            }
+          });
+          window.monacoThemesDefined = true;
+        }
+
         if (window.appMonacoInstance) {
           window.appMonacoInstance.dispose();
           window.appMonacoInstance = null;
@@ -804,7 +860,7 @@ function shadowApp() {
         window.appMonacoInstance = window.monaco.editor.create(container, {
           value: this.activeEditorTab.content || '',
           language: this.getMonacoLanguage(this.activeEditorTab.name),
-          theme: this.theme === 'dark' ? 'vs-dark' : 'vs',
+          theme: this.theme === 'dark' ? 'slatessh-dark' : 'slatessh-light',
           automaticLayout: true,
           minimap: { enabled: false },
           fontSize: 14,
@@ -830,7 +886,7 @@ function shadowApp() {
         }
         const lang = this.getMonacoLanguage(this.activeEditorTab.name);
         window.monaco.editor.setModelLanguage(window.appMonacoInstance.getModel(), lang);
-        window.monaco.editor.setTheme(this.theme === 'dark' ? 'vs-dark' : 'vs');
+        window.monaco.editor.setTheme(this.theme === 'dark' ? 'slatessh-dark' : 'slatessh-light');
         this.isMonacoUpdating = false;
       }
     },
@@ -1052,6 +1108,34 @@ function shadowApp() {
     formatUnix(value) {
       if (!value) return '-';
       return new Date(value * 1000).toLocaleString();
+    },
+
+    getFileIcon(entry) {
+      if (entry.isDir) return 'folder';
+      const name = entry.filename.toLowerCase();
+      if (name.endsWith('.json')) return 'settings_schema';
+      if (name.endsWith('.md')) return 'markdown';
+      if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'].some(ext => name.endsWith(ext))) return 'image';
+      if (['.zip', '.tar', '.gz', '.rar', '.7z', '.tgz'].some(ext => name.endsWith(ext))) return 'archive';
+      if (['.sh', '.bash', '.zsh', '.go', '.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.c', '.cpp', '.h', '.cs', '.php', '.rs', '.rb', '.yml', '.yaml', '.sql'].some(ext => name.endsWith(ext))) return 'code';
+      if (['.pem', '.key', '.pub'].some(ext => name.endsWith(ext))) return 'vpn_key';
+      if (['.log', '.txt', '.conf', '.env', '.ini'].some(ext => name.endsWith(ext))) return 'description';
+      return 'draft';
+    },
+
+    getFileIconClass(entry) {
+      if (entry.isDir) return 'file-icon folder-type';
+      const name = entry.filename.toLowerCase();
+      if (name.endsWith('.json') || name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.ini') || name.endsWith('.conf') || name.endsWith('.env')) {
+        return 'file-icon config-type';
+      }
+      if (name.endsWith('.pem') || name.endsWith('.key') || name.endsWith('.pub')) {
+        return 'file-icon key-type';
+      }
+      if (['.sh', '.bash', '.zsh', '.go', '.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.c', '.cpp', '.h', '.cs', '.php', '.rs', '.rb', '.sql'].some(ext => name.endsWith(ext))) {
+        return 'file-icon code-type';
+      }
+      return 'file-icon';
     }
   };
 }
