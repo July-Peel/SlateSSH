@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260522_touch">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260522_enlarge">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
@@ -187,7 +187,7 @@
               <div class="tab-empty" x-show="!sessions.length">暂无活动会话</div>
             </div>
 
-            <div class="terminal-tools" x-show="activeSessionId">
+            <div class="terminal-tools" x-show="activeSessionId && !isMobile">
               <template x-if="activeSessionType() !== 'RDP'">
                 <div style="display:contents;">
                   <input x-model="terminalSearch" @keydown.enter.prevent="searchTerminal()" placeholder="搜索终端输出">
@@ -229,7 +229,7 @@
               <button @click="sendQuick('/')">/</button>
             </div>
 
-            <div class="commandbar" x-show="!activeSessionId || activeSessionType() !== 'RDP'">
+            <div class="commandbar" x-show="(!activeSessionId || activeSessionType() !== 'RDP') && !isMobile">
               <button @click="sendQuick('')" x-show="!isMobile">Ctrl+C</button>
               <button @click="sendQuick('clear')" x-show="!isMobile">clear</button>
               <button @click="sendQuick('exit')" x-show="!isMobile">exit</button>
@@ -451,7 +451,7 @@
       tryLoadMonaco(0);
     })();
   </script>
-  <script src="/assets/js/app.js?v=20260522_touch"></script>
+  <script src="/assets/js/app.js?v=20260522_enlarge"></script>
 </body>
 </html>
 

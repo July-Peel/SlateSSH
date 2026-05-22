@@ -190,7 +190,10 @@ function shadowApp() {
               target.classList.contains('xterm-viewport') || 
               target.classList.contains('monaco-scrollable-element') || 
               target.closest('.xterm-viewport') || 
-              target.closest('.monaco-scrollable-element')) {
+              target.closest('.monaco-scrollable-element') ||
+              target.closest('.terminal-stage') ||
+              target.closest('.monaco-editor') ||
+              target.closest('#monaco-editor-container')) {
             isScrollable = true;
             break;
           }
