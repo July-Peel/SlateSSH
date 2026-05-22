@@ -159,7 +159,6 @@ function shadowApp() {
           }
         };
         window.visualViewport.addEventListener('resize', updateVV);
-        window.visualViewport.addEventListener('scroll', updateVV);
         updateVV();
       }
       
@@ -175,6 +174,34 @@ function shadowApp() {
           }, 60);
         }
       });
+
+      // Prevent entire page bouncing and elastic scrolling on iOS Safari
+      document.addEventListener('touchmove', (e) => {
+        let target = e.target;
+        let isScrollable = false;
+        while (target && target !== document.body && target !== document.documentElement) {
+          const style = window.getComputedStyle(target);
+          const overflowY = style.overflowY;
+          const overflowX = style.overflowX;
+          const canScrollY = (overflowY === 'auto' || overflowY === 'scroll') && (target.scrollHeight > target.clientHeight);
+          const canScrollX = (overflowX === 'auto' || overflowX === 'scroll') && (target.scrollWidth > target.clientWidth);
+          
+          if (canScrollY || canScrollX || 
+              target.classList.contains('xterm-viewport') || 
+              target.classList.contains('monaco-scrollable-element') || 
+              target.closest('.xterm-viewport') || 
+              target.closest('.monaco-scrollable-element')) {
+            isScrollable = true;
+            break;
+          }
+          target = target.parentNode;
+        }
+        if (!isScrollable) {
+          if (e.cancelable) {
+            e.preventDefault();
+          }
+        }
+      }, { passive: false });
 
       document.addEventListener('click', () => this.hideContextMenu());
       document.addEventListener('mousemove', (event) => this.dragEditor(event));
