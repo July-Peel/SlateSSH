@@ -140,43 +140,70 @@ function shadowApp() {
     },
 
     async init() {
+      this._resizeTimer = null;
+      this._focusTimer = null;
+
       window.addEventListener('resize', () => {
         this.isMobile = window.innerWidth <= 760;
         if (this.activeSessionType() === 'RDP' && this.activeSessionId) {
           setTimeout(() => this.fitRdp(this.activeSessionId), 0);
         }
       });
+
       if (window.visualViewport) {
         const updateVV = () => {
-          if (window.scrollY !== 0 || window.scrollX !== 0) {
-            window.scrollTo(0, 0);
-          }
-          document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-          document.documentElement.style.setProperty('--vv-top', `${window.visualViewport.offsetTop}px`);
-          document.documentElement.style.setProperty('--vv-left', `${window.visualViewport.pageLeft}px`);
-          if (this.activeSessionId && this.activeSessionType() !== 'RDP') {
-            setTimeout(() => this.resizeActiveTerminal(this.activeSessionId), 30);
+          const vvh = window.visualViewport.height;
+          document.documentElement.style.setProperty('--vv-height', `${vvh}px`);
+
+          // Track keyboard offset for CSS awareness
+          const keyboardOffset = window.innerHeight - vvh;
+          document.documentElement.style.setProperty('--keyboard-offset', `${Math.max(0, keyboardOffset)}px`);
+
+          // Only resize terminal when authenticated and terminal is active
+          if (this.authenticated && this.activeSessionId && this.activeSessionType() !== 'RDP') {
+            clearTimeout(this._resizeTimer);
+            this._resizeTimer = setTimeout(() => {
+              this.resizeActiveTerminal(this.activeSessionId);
+              // Ensure cursor stays visible after keyboard open/close
+              try { this.terminals[this.activeSessionId]?.scrollToBottom?.(); } catch(_) {}
+            }, 60);
           }
         };
         window.visualViewport.addEventListener('resize', updateVV);
+        // iOS Safari fires scroll events when keyboard pushes the visual viewport
+        window.visualViewport.addEventListener('scroll', () => {
+          // Reset any page scroll caused by keyboard appearance
+          if (window.scrollY !== 0) window.scrollTo(0, 0);
+          updateVV();
+        });
         updateVV();
       }
-      
-      // Global focus listener for mobile viewport locking
+
+      // Global focus listener for mobile viewport stability
       document.addEventListener('focusin', (e) => {
-        if (this.isMobile && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.classList.contains('xterm-helper-textarea'))) {
-          setTimeout(() => {
+        if (!this.isMobile) return;
+        const tag = e.target.tagName;
+        const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.classList.contains('xterm-helper-textarea');
+        if (isInput) {
+          clearTimeout(this._focusTimer);
+          this._focusTimer = setTimeout(() => {
+            // Reset scroll caused by Safari auto-scroll-to-focused-element
             window.scrollTo(0, 0);
             if (window.visualViewport) {
               document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-              document.documentElement.style.setProperty('--vv-top', `${window.visualViewport.offsetTop}px`);
             }
-          }, 60);
+          }, 150);
         }
       });
 
-      // Prevent entire page bouncing and elastic scrolling on iOS Safari
+      // Prevent page bounce / elastic scrolling on iOS Safari
       document.addEventListener('touchmove', (e) => {
+        // On auth/setup pages, block all scrolling to prevent flicker
+        if (!this.authenticated) {
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+
         let target = e.target;
         let isScrollable = false;
         while (target && target !== document.body && target !== document.documentElement) {
@@ -185,15 +212,21 @@ function shadowApp() {
           const overflowX = style.overflowX;
           const canScrollY = (overflowY === 'auto' || overflowY === 'scroll') && (target.scrollHeight > target.clientHeight);
           const canScrollX = (overflowX === 'auto' || overflowX === 'scroll') && (target.scrollWidth > target.clientWidth);
-          
-          if (canScrollY || canScrollX || 
-              target.classList.contains('xterm-viewport') || 
-              target.classList.contains('monaco-scrollable-element') || 
-              target.closest('.xterm-viewport') || 
+
+          if (canScrollY || canScrollX ||
+              target.classList.contains('xterm-viewport') ||
+              target.classList.contains('monaco-scrollable-element') ||
+              target.closest('.xterm-viewport') ||
               target.closest('.monaco-scrollable-element') ||
               target.closest('.terminal-stage') ||
               target.closest('.monaco-editor') ||
-              target.closest('#monaco-editor-container')) {
+              target.closest('#monaco-editor-container') ||
+              target.closest('.file-list') ||
+              target.closest('.file-panel') ||
+              target.closest('.status-panel') ||
+              target.closest('.connection-layout') ||
+              target.closest('.mobile-keyboard') ||
+              target.closest('.tabbar')) {
             isScrollable = true;
             break;
           }
@@ -1190,18 +1223,25 @@ function shadowApp() {
       }
     },
 
+    // Re-focus terminal after mobile keyboard button taps to keep iOS keyboard open
+    refocusTerminal() {
+      if (this.isMobile && this.activeSessionId && this.terminals[this.activeSessionId]) {
+        setTimeout(() => this.terminals[this.activeSessionId]?.focus(), 10);
+      }
+    },
+
     async sendQuick(command) {
       if (!this.activeSessionId) return;
       const noReturn = ['\x03', '\x04', '\x1b', '\x09', '\x1b[A', '\x1b[B', '\x1b[C', '\x1b[D'];
       if (noReturn.includes(command)) {
         await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: command } });
-        return;
-      }
-      if (command === 'clear' || command === 'exit') {
+      } else if (command === 'clear' || command === 'exit') {
         await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: `${command}\r` } });
-        return;
+      } else {
+        await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: command } });
       }
-      await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: command } });
+      // Keep keyboard open on mobile after shortcut key taps
+      this.refocusTerminal();
     },
 
     percent(value) {

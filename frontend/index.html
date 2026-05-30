@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#030712">
   <title>SlateSSH Go</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,7 +14,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260522_enlarge">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260530_mobile_fix">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
@@ -218,7 +222,7 @@
             </div>
 
             <div class="mobile-keyboard" x-show="isMobile && activeSessionType() !== 'RDP'" style="display: none;">
-              <button @click="ctrlKeyActive = !ctrlKeyActive" :style="ctrlKeyActive ? 'background: var(--accent); color: #fff; border-color: var(--accent);' : ''">Ctrl</button>
+              <button @click="ctrlKeyActive = !ctrlKeyActive; refocusTerminal()" :style="ctrlKeyActive ? 'background: var(--accent); color: #fff; border-color: var(--accent);' : ''">Ctrl</button>
               <button @click="sendQuick('\x1b')">Esc</button>
               <button @click="sendQuick('\x09')">Tab</button>
               <button @click="sendQuick('\x1b[A')">↑</button>
@@ -451,7 +455,7 @@
       tryLoadMonaco(0);
     })();
   </script>
-  <script src="/assets/js/app.js?v=20260522_enlarge"></script>
+  <script src="/assets/js/app.js?v=20260530_mobile_fix"></script>
 </body>
 </html>
 
