@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260601_fullscreen_panel">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260601_fullscreen_fixed">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
@@ -183,7 +183,7 @@
             </div>
           </aside>
 
-          <section class="terminal-panel" :class="isFullscreen ? 'fullscreen' : ''">
+          <section class="terminal-panel" :class="isFullscreen ? 'has-fullscreen' : ''">
             <div class="tabbar">
               <template x-for="tab in sessions" :key="tab.id">
                 <button @click="activateSession(tab.id)" class="tab" :class="activeSessionId === tab.id ? 'active' : ''">
@@ -208,7 +208,8 @@
               <button @click="toggleFullscreen()" x-text="isFullscreen ? '退出全屏' : '网页全屏'">网页全屏</button>
             </div>
 
-            <div class="terminal-stage">
+            <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
+              <button x-show="isFullscreen" @click="toggleFullscreen()" class="close-fullscreen-btn">退出全屏</button>
               <template x-for="tab in sessions" :key="tab.id + '-terminal'">
                 <div x-show="activeSessionId === tab.id" class="terminal-wrap">
                   <template x-if="tab.type === 'RDP'">
@@ -461,7 +462,7 @@
       tryLoadMonaco(0);
     })();
   </script>
-  <script src="/assets/js/app.js?v=20260601_fullscreen_panel"></script>
+  <script src="/assets/js/app.js?v=20260601_fullscreen_fixed"></script>
 </body>
 </html>
 
