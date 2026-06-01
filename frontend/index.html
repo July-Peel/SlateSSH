@@ -14,12 +14,12 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260530_mobile_fix">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260601_ui_overhaul">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
     <template x-if="booting">
-      <div class="auth-page">正在加载...</div>
+      <div class="auth-page"><div class="boot-brand">SlateSSH</div></div>
     </template>
 
     <template x-if="!booting && needsSetup">
@@ -53,11 +53,15 @@
         <header class="topbar">
           <div class="brand">SlateSSH</div>
           <div class="spacer"></div>
-          <span class="muted" x-text="currentUser?.username || ''" style="margin-right: 12px;"></span>
-          <button @click="logout()" class="danger icon-btn" title="退出"><span class="material-symbols-rounded">logout</span></button>
+          <div class="topbar-actions">
+            <button @click="openConnectionManager()" class="topbar-shortcut" style="padding: 6px 14px; font-size: 13px; border-radius: 10px;"><span class="material-symbols-rounded" style="font-size:18px;">dns</span> 连接</button>
+            <button @click="toggleFullscreen()" class="topbar-shortcut" style="padding: 6px 14px; font-size: 13px; border-radius: 10px;" x-show="activeSessionId"><span class="material-symbols-rounded" style="font-size:18px;">fullscreen</span></button>
+            <div class="user-avatar" x-text="(currentUser?.username || '?')[0]"></div>
+            <button @click="logout()" class="danger icon-btn" title="退出"><span class="material-symbols-rounded">logout</span></button>
+          </div>
         </header>
 
-        <div class="fab-container" x-data="{ fabOpen: false }" @click.away="fabOpen = false">
+        <div class="fab-container" x-data="{ fabOpen: false }" @click.away="fabOpen = false" :class="{ 'has-keyboard': isMobile && activeSessionId && activeSessionType() !== 'RDP' }">
           <div class="fab-menu" :class="fabOpen ? 'open' : ''">
             <button @click="showSftpWidget = !showSftpWidget; saveSettings(); if(isMobile) showMobileSftp = !showMobileSftp; fabOpen = false" class="fab-item" :title="showSftpWidget ? '隐藏文件面板' : '显示文件面板'">
               <span class="material-symbols-rounded" x-text="showSftpWidget ? 'folder_off' : 'folder'"></span>
@@ -69,7 +73,7 @@
             </button>
             <button @click="toggleTheme(); fabOpen = false" class="fab-item" :title="theme === 'dark' ? '白天模式' : '夜间模式'">
               <span class="material-symbols-rounded" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'"></span>
-              <span class="fab-label" x-text="theme === 'dark' ? '白间' : '夜间'"></span>
+              <span class="fab-label" x-text="theme === 'dark' ? '白天' : '夜间'"></span>
             </button>
             <button @click="clearActiveTerminal(); fabOpen = false" class="fab-item" title="清空终端">
               <span class="material-symbols-rounded">mop</span>
@@ -183,9 +187,9 @@
             <div class="tabbar">
               <template x-for="tab in sessions" :key="tab.id">
                 <button @click="activateSession(tab.id)" class="tab" :class="activeSessionId === tab.id ? 'active' : ''">
+                  <span class="tab-dot" :class="tab.connected ? 'online' : 'offline'"></span>
                   <span x-text="tab.name"></span>
-                  <small x-text="tab.connected ? '在线' : '断开'"></small>
-                  <span @click.stop="closeTab(tab.id)">×</span>
+                  <span class="tab-close" @click.stop="closeTab(tab.id)">&times;</span>
                 </button>
               </template>
               <div class="tab-empty" x-show="!sessions.length">暂无活动会话</div>
@@ -217,7 +221,10 @@
                 </div>
               </template>
               <template x-if="!sessions.length">
-                <div class="terminal-empty">从“连接管理”选择一个 SSH 或 RDP 连接开始。</div>
+                <div class="terminal-empty">
+                  <span class="material-symbols-rounded empty-icon">terminal</span>
+                  <div class="empty-text">点击右上角「连接」或右下角菜单，选择一个 SSH / RDP 连接开始</div>
+                </div>
               </template>
             </div>
 
@@ -254,21 +261,21 @@
                 <div class="status-info-row"><span>系统</span><strong x-text="activeStatus.osName || '-' "></strong></div>
                 <div class="status-info-row"><span>IP</span><strong x-text="activeStatus.serverIp || '-' "></strong></div>
                 <div class="status-grid">
-                  <div class="status-circle">
+                  <div class="status-circle" :class="(activeStatus.cpuPercent || 0) > 85 ? 'level-danger' : (activeStatus.cpuPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
                     <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.cpuPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
                     <div class="inner">
                       <strong x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></strong>
                       <span>CPU</span>
                     </div>
                   </div>
-                  <div class="status-circle">
+                  <div class="status-circle" :class="(activeStatus.memPercent || 0) > 85 ? 'level-danger' : (activeStatus.memPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
                     <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.memPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
                     <div class="inner">
                       <strong x-text="Math.round(activeStatus.memPercent || 0) + '%'"></strong>
                       <span>内存</span>
                     </div>
                   </div>
-                  <div class="status-circle">
+                  <div class="status-circle" :class="(activeStatus.diskPercent || 0) > 85 ? 'level-danger' : (activeStatus.diskPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
                     <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.diskPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
                     <div class="inner">
                       <strong x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></strong>
@@ -276,8 +283,8 @@
                     </div>
                   </div>
                 </div>
-                <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">download</span> 下行</span><strong x-text="bytes(activeStatus.netRxRate) + '/s'"></strong></div>
-                <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">upload</span> 上行</span><strong x-text="bytes(activeStatus.netTxRate) + '/s'"></strong></div>
+                <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">download</span> 下行</span><strong x-text="bytes(activeStatus.netRxRate)"></strong></div>
+                <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">upload</span> 上行</span><strong x-text="bytes(activeStatus.netTxRate)"></strong></div>
               </div>
             </template>
             <template x-if="!activeStatus">
@@ -455,7 +462,7 @@
       tryLoadMonaco(0);
     })();
   </script>
-  <script src="/assets/js/app.js?v=20260530_mobile_fix"></script>
+  <script src="/assets/js/app.js?v=20260601_ui_overhaul"></script>
 </body>
 </html>
 
