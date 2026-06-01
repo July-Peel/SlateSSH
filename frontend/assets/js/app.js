@@ -243,23 +243,7 @@ function shadowApp() {
       document.addEventListener('mousemove', (event) => this.dragEditor(event));
       document.addEventListener('mouseup', () => this.stopEditorDrag());
 
-      // Sync fullscreen state when user exits via Escape key or other browser mechanisms
-      const onFsChange = () => {
-        const fsEl = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
-        if (!fsEl && this.isFullscreen) {
-          this.isFullscreen = false;
-          this.$nextTick(() => {
-            if (!this.activeSessionId) return;
-            if (this.activeSessionType() === 'RDP') {
-              this.fitRdp(this.activeSessionId);
-            } else {
-              this.resizeActiveTerminal(this.activeSessionId);
-            }
-          });
-        }
-      };
-      document.addEventListener('fullscreenchange', onFsChange);
-      document.addEventListener('webkitfullscreenchange', onFsChange);
+      // Fullscreen listener removed per user request (fallback to CSS fullscreen)
       try {
         const needsSetupResp = await fetch('/api/v1/auth/needs-setup');
         this.needsSetup = (await needsSetupResp.json()).needsSetup;
@@ -754,57 +738,15 @@ function shadowApp() {
     },
 
     toggleFullscreen() {
-      if (!this.isFullscreen) {
-        // Enter true browser fullscreen
-        const el = document.documentElement;
-        const requestFs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-        if (requestFs) {
-          requestFs.call(el).then(() => {
-            this.isFullscreen = true;
-            this.$nextTick(() => {
-              if (!this.activeSessionId) return;
-              if (this.activeSessionType() === 'RDP') {
-                this.fitRdp(this.activeSessionId);
-              } else {
-                this.resizeActiveTerminal(this.activeSessionId);
-              }
-            });
-          }).catch(() => {
-            // Fallback to CSS-only fullscreen if API fails
-            this.isFullscreen = true;
-            this.$nextTick(() => {
-              if (!this.activeSessionId) return;
-              if (this.activeSessionType() === 'RDP') {
-                this.fitRdp(this.activeSessionId);
-              } else {
-                this.resizeActiveTerminal(this.activeSessionId);
-              }
-            });
-          });
+      this.isFullscreen = !this.isFullscreen;
+      this.$nextTick(() => {
+        if (!this.activeSessionId) return;
+        if (this.activeSessionType() === 'RDP') {
+          this.fitRdp(this.activeSessionId);
         } else {
-          this.isFullscreen = true;
+          this.resizeActiveTerminal(this.activeSessionId);
         }
-      } else {
-        // Exit browser fullscreen
-        const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-        if (exitFs && (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement)) {
-          exitFs.call(document).then(() => {
-            this.isFullscreen = false;
-            this.$nextTick(() => {
-              if (!this.activeSessionId) return;
-              if (this.activeSessionType() === 'RDP') {
-                this.fitRdp(this.activeSessionId);
-              } else {
-                this.resizeActiveTerminal(this.activeSessionId);
-              }
-            });
-          }).catch(() => {
-            this.isFullscreen = false;
-          });
-        } else {
-          this.isFullscreen = false;
-        }
-      }
+      });
     },
 
     clearActiveTerminal() {
