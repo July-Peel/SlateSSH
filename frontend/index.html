@@ -10,7 +10,7 @@
   <title>SlateSSH Go</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -51,43 +51,21 @@
     <template x-if="!booting && authenticated">
       <div class="workspace">
         <header class="topbar">
-          <div class="brand">SlateSSH</div>
-          <div class="spacer"></div>
+          
+          <div class="topbar-actions" style="justify-content: flex-start; flex: 1;">
+            <button @click="showMobileMenu = !showMobileMenu" class="icon-btn topbar-shortcut"><span class="material-symbols-rounded">menu</span></button>
+            <div class="brand" style="margin-left: 8px;">Swell SSH</div>
+          </div>
           <div class="topbar-actions">
-            <button @click="openConnectionManager()" class="topbar-shortcut" style="padding: 6px 14px; font-size: 13px; border-radius: 10px;"><span class="material-symbols-rounded" style="font-size:18px;">dns</span> 连接</button>
-            <button @click="toggleFullscreen()" class="topbar-shortcut" style="padding: 6px 14px; font-size: 13px; border-radius: 10px;" x-show="activeSessionId"><span class="material-symbols-rounded" style="font-size:18px;" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'">fullscreen</span></button>
+            <button @click="showConnectionManager = true" class="topbar-shortcut"><span class="material-symbols-rounded" style="font-size:18px;">dns</span> 连接</button>
+            <button @click="toggleFullscreen()" class="topbar-shortcut" x-show="activeSessionId"><span class="material-symbols-rounded" style="font-size:18px;" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'">fullscreen</span></button>
             <div class="user-avatar" x-text="(currentUser?.username || '?')[0]"></div>
             <button @click="logout()" class="danger icon-btn" title="退出"><span class="material-symbols-rounded">logout</span></button>
           </div>
+
         </header>
 
-        <div class="fab-container" x-data="{ fabOpen: false }" @click.away="fabOpen = false" :class="{ 'has-keyboard': isMobile && activeSessionId && activeSessionType() !== 'RDP' }">
-          <div class="fab-menu" :class="fabOpen ? 'open' : ''">
-            <button @click="showSftpWidget = !showSftpWidget; saveSettings(); if(isMobile) showMobileSftp = !showMobileSftp; fabOpen = false" class="fab-item" :title="showSftpWidget ? '隐藏文件面板' : '显示文件面板'">
-              <span class="material-symbols-rounded" x-text="showSftpWidget ? 'folder_off' : 'folder'"></span>
-              <span class="fab-label">文件</span>
-            </button>
-            <button @click="showStatusWidget = !showStatusWidget; saveSettings(); if(isMobile) showMobileStatus = !showMobileStatus; fabOpen = false" class="fab-item" :title="showStatusWidget ? '隐藏状态面板' : '显示状态面板'">
-              <span class="material-symbols-rounded" x-text="showStatusWidget ? 'monitoring' : 'speed'"></span>
-              <span class="fab-label">状态</span>
-            </button>
-            <button @click="toggleTheme(); fabOpen = false" class="fab-item" :title="theme === 'dark' ? '白天模式' : '夜间模式'">
-              <span class="material-symbols-rounded" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'"></span>
-              <span class="fab-label" x-text="theme === 'dark' ? '白天' : '夜间'"></span>
-            </button>
-            <button @click="clearActiveTerminal(); fabOpen = false" class="fab-item" title="清空终端">
-              <span class="material-symbols-rounded">mop</span>
-              <span class="fab-label">清空</span>
-            </button>
-            <button @click="refreshFiles(); fabOpen = false" class="fab-item" title="刷新 SFTP">
-              <span class="material-symbols-rounded">refresh</span>
-              <span class="fab-label">刷新</span>
-            </button>
-            <button @click="openConnectionManager(); fabOpen = false" class="fab-item" title="连接管理">
-              <span class="material-symbols-rounded">dns</span>
-              <span class="fab-label">连接</span>
-            </button>
-          </div>
+        
           <button class="fab-main" @click="fabOpen = !fabOpen" :class="fabOpen ? 'open' : ''">
             <span class="material-symbols-rounded">apps</span>
           </button>
@@ -96,92 +74,44 @@
         <div class="drawer-overlay" x-show="isMobile && (showMobileSftp || showMobileStatus)" @click="showMobileSftp = false; showMobileStatus = false"></div>
 
         <main class="main-grid" :class="{ 'no-status': !showStatusWidget, 'no-sftp': !showSftpWidget }">
-          <aside class="file-panel" x-show="!isMobile ? showSftpWidget : true" :class="isMobile ? (showMobileSftp ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
-            <div class="panel-head">
-              <div style="width: 100%;">
-                <h2>SFTP 文件</h2>
-                <div class="path-bar-container" @click.away="showPathDropdown = false">
-                  <div class="path-input-wrapper">
-                    <span class="material-symbols-rounded path-icon">folder_open</span>
-                    <input 
-                      type="text" 
-                      x-model="pathInput"
-                      @focus="showPathDropdown = true; activeSuggestionIndex = -1"
-                      @keydown.down.prevent="navigateSuggestions(1)"
-                      @keydown.up.prevent="navigateSuggestions(-1)"
-                      @keydown.enter.prevent="selectSuggestionOrSubmit()"
-                      @keydown.escape="showPathDropdown = false"
-                      class="path-input"
-                      placeholder="跳转路径，如 /etc..."
-                    >
-                    <button @click="submitPath()" class="path-go-btn" title="跳转">
-                      <span class="material-symbols-rounded" style="font-size: 20px;">arrow_forward</span>
-                    </button>
-                  </div>
-                  <div 
-                    x-show="showPathDropdown && getPathSuggestions().length > 0" 
-                    class="path-dropdown"
-                    style="display: none;"
-                  >
-                    <template x-for="(suggestion, idx) in getPathSuggestions()" :key="suggestion">
-                      <div 
-                        @click="selectPathSuggestion(suggestion)"
-                        class="path-dropdown-item"
-                        :class="activeSuggestionIndex === idx ? 'active' : ''"
-                      >
-                        <span class="material-symbols-rounded item-icon">folder</span>
-                        <span x-text="suggestion" class="item-text"></span>
-                      </div>
-                    </template>
-                  </div>
-                </div>
+          
+          <aside class="connection-panel" x-show="!isMobile || showMobileMenu" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
+            <div class="panel-head" style="margin-bottom: 16px;">
+              <h2>SSH 连接</h2>
+              <div class="path-input-wrapper" style="margin-top: 8px;">
+                <input x-model="commandInput" placeholder="快速连接 user@host:port" class="path-input" @keydown.enter="sendCommandInput()">
+                <button @click="sendCommandInput()" class="path-go-btn" title="连接"><span class="material-symbols-rounded">play_arrow</span></button>
               </div>
-              <button x-show="isMobile" @click="showMobileSftp = false" style="margin-left: 8px; margin-top: 4px; font-size: 20px; border: 0; background: transparent; padding: 4px;">×</button>
             </div>
-            <div class="file-actions">
-              <button @click="goParentDir()">上级</button>
-              <button @click="refreshFiles()">刷新</button>
-              <button @click="promptMkdir()">新建目录</button>
-              <button @click="promptWriteFile()">新建文件</button>
-              <button @click="pasteClipboard()">粘贴</button>
-              <button @click="triggerUpload()">上传</button>
-              <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
-            </div>
-            <div class="crumbs">
-              <template x-for="(segment, index) in pathSegments" :key="segment.fullPath">
-                <span>
-                  <button @click="jumpToPath(segment.fullPath)" x-text="segment.label"></button>
-                  <span x-show="index < pathSegments.length - 1">/</span>
-                </span>
-              </template>
-            </div>
-            <div class="file-list">
-              <template x-if="!activeSessionId">
-                <div class="empty">连接 SSH 后显示远端文件。</div>
-              </template>
-              <template x-for="entry in files" :key="entry.filename">
-                <div class="file-item" @contextmenu="showContextMenu($event, entry)">
-                  <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)">
-                    <span :class="getFileIconClass(entry)">
-                      <span class="material-symbols-rounded" x-text="getFileIcon(entry)" style="font-size: 20px;"></span>
-                    </span>
-                    <span>
-                      <strong x-text="entry.filename"></strong>
-                      <small x-text="(entry.isDir ? '文件夹' : formatSize(entry.size)) + ' · ' + formatUnix(entry.mtime)"></small>
-                    </span>
-                  </button>
-                  <div class="file-tools">
-                    <button x-show="!entry.isDir" @click="readFile(entry.filename)">编辑</button>
-                    <button @click="renameEntry(entry)">改名</button>
-                    <button @click="copyEntry(entry)">复制</button>
-                    <button @click="cutEntry(entry)">剪切</button>
-                    <button x-show="!entry.isDir" @click="downloadEntry(entry)">下载</button>
-                    <button class="danger-text" @click="removeEntry(entry)">删除</button>
+            
+            <div class="connection-list" style="overflow-y: auto; flex: 1; padding-bottom: 12px; margin: -8px; padding: 8px;">
+              <template x-for="connection in connections" :key="connection.id">
+                <div class="connection-item" style="padding: 8px 12px; cursor: pointer; position: relative;" @click="openSession(connection)">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                      <strong style="font-size: 14px; margin-bottom: 2px;">
+                        <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: text-bottom; margin-right: 4px;" :style="connection.type === 'RDP' ? 'color:#107c10' : 'color:var(--accent)'" x-text="connection.type === 'RDP' ? 'desktop_windows' : 'terminal'"></span>
+                        <span x-text="connection.name"></span>
+                      </strong>
+                      <small style="color: var(--text-secondary);"><span x-text="(connection.type === 'SSH' ? connection.username + '@' : '') + connection.host + ':' + connection.port"></span></small>
+                    </div>
+                    <button class="icon-btn" @click.stop="deleteConnection(connection.id)" style="opacity: 0.5; padding: 2px; min-height: auto;"><span class="material-symbols-rounded" style="font-size: 16px;">visibility_off</span></button>
                   </div>
                 </div>
               </template>
+              <div class="empty" x-show="!connections.length" style="padding-top: 24px;">暂无已保存的连接</div>
+            </div>
+
+            <div class="panel-footer" style="margin-top: auto; padding-top: 12px; border-top: 1px solid var(--divider); display: flex; gap: 4px; align-items: center;">
+              <button class="primary" style="flex: 1; justify-content: flex-start;" @click="editConnection(null); showConnectionManager = true;">
+                <span class="material-symbols-rounded">add</span> 新建连接
+              </button>
+              <button class="icon-btn" @click="editConnection(connections[0] || null); showConnectionManager = true;" title="编辑"><span class="material-symbols-rounded">edit</span></button>
+              <button class="icon-btn" @click="showConnectionManager = true;" title="管理"><span class="material-symbols-rounded">settings</span></button>
+              <button class="icon-btn" @click="toggleTheme()" :title="theme === 'dark' ? '白天模式' : '夜间模式'"><span class="material-symbols-rounded" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'"></span></button>
             </div>
           </aside>
+
 
           <section class="terminal-panel" :class="isFullscreen ? 'has-fullscreen' : ''">
             <div class="tabbar">
@@ -229,7 +159,7 @@
             </div>
 
             <div class="mobile-keyboard" x-show="isMobile && activeSessionType() !== 'RDP'" style="display: none;">
-              <button @click="ctrlKeyActive = !ctrlKeyActive; refocusTerminal()" :style="ctrlKeyActive ? 'background: var(--accent); color: #fff; border-color: var(--accent);' : ''">Ctrl</button>
+              <button @click="ctrlKeyActive = !ctrlKeyActive; refocusTerminal()" :style="ctrlKeyActive ? 'background: var(--accent); color: var(--accent-text); border-color: var(--accent);' : ''">Ctrl</button>
               <button @click="sendQuick('\x1b')">Esc</button>
               <button @click="sendQuick('\x09')">Tab</button>
               <button @click="sendQuick('\x1b[A')">↑</button>
@@ -240,8 +170,14 @@
               <button @click="sendQuick('/')">/</button>
             </div>
 
+            <div class="mobile-terminal-actions" x-show="isMobile && activeSessionType() !== 'RDP'" style="display: none;">
+              <button @click="mobileTerminalCopy()"><span class="material-symbols-rounded" style="font-size:14px;vertical-align:bottom;">content_copy</span> 复制</button>
+              <button @click="mobileTerminalPaste()"><span class="material-symbols-rounded" style="font-size:14px;vertical-align:bottom;">content_paste</span> 粘贴</button>
+              <button @click="sendQuick('\x03')" class="danger-text">Ctrl+C</button>
+            </div>
+
             <div class="commandbar" x-show="(!activeSessionId || activeSessionType() !== 'RDP') && !isMobile">
-              <button @click="sendQuick('')" x-show="!isMobile">Ctrl+C</button>
+              <button @click="sendQuick('\x03')" x-show="!isMobile">Ctrl+C</button>
               <button @click="sendQuick('clear')" x-show="!isMobile">clear</button>
               <button @click="sendQuick('exit')" x-show="!isMobile">exit</button>
               <input x-model="commandInput" @keydown.enter.prevent="sendCommandInput()" placeholder="输入命令后按 Enter 发送">
@@ -250,11 +186,111 @@
             <p class="status-line" :class="testMessageType" x-text="testMessage"></p>
           </section>
 
-          <aside class="status-panel" x-show="!isMobile ? showStatusWidget : true" :class="isMobile ? (showMobileStatus ? 'mobile-drawer right open' : 'mobile-drawer right') : ''">
+          
+          <aside class="side-panel" x-show="!isMobile ? (showSftpWidget || showStatusWidget) : true" :class="isMobile ? (showMobileStatus ? 'mobile-drawer right open' : 'mobile-drawer right') : ''">
+            <div class="side-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--divider); padding-bottom: 8px;">
+              <button class="icon-btn" :class="rightTab === 'files' ? 'primary' : ''" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false" title="文件"><span class="material-symbols-rounded">folder</span></button>
+              <button class="icon-btn" :class="rightTab === 'status' ? 'primary' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false" title="状态监控"><span class="material-symbols-rounded">speed</span></button>
+              <button class="icon-btn" @click="rightTab = 'snippets'" title="代码片段"><span class="material-symbols-rounded">data_object</span></button>
+              <div style="flex:1"></div>
+              <button class="icon-btn" x-show="isMobile" @click="showMobileStatus = false"><span class="material-symbols-rounded">close</span></button>
+            </div>
+
+            <div x-show="rightTab === 'files'" style="display: flex; flex-direction: column; height: 100%;">
+              
+            <div class="panel-head">
+              <div style="width: 100%;">
+                <h2>SFTP 文件</h2>
+                <div class="path-bar-container" @click.away="showPathDropdown = false">
+                  <div class="path-input-wrapper">
+                    <span class="material-symbols-rounded path-icon">folder_open</span>
+                    <input 
+                      type="text" 
+                      x-model="pathInput"
+                      @focus="showPathDropdown = true; activeSuggestionIndex = -1"
+                      @keydown.down.prevent="navigateSuggestions(1)"
+                      @keydown.up.prevent="navigateSuggestions(-1)"
+                      @keydown.enter.prevent="selectSuggestionOrSubmit()"
+                      @keydown.escape="showPathDropdown = false"
+                      class="path-input"
+                      placeholder="跳转路径，如 /etc..."
+                    >
+                    <button @click="submitPath()" class="path-go-btn" title="跳转">
+                      <span class="material-symbols-rounded" style="font-size: 20px;">arrow_forward</span>
+                    </button>
+                  </div>
+                  <div 
+                    x-show="showPathDropdown && getPathSuggestions().length > 0" 
+                    class="path-dropdown"
+                    style="display: none;"
+                  >
+                    <template x-for="(suggestion, idx) in getPathSuggestions()" :key="suggestion">
+                      <div 
+                        @click="selectPathSuggestion(suggestion)"
+                        class="path-dropdown-item"
+                        :class="activeSuggestionIndex === idx ? 'active' : ''"
+                      >
+                        <span class="material-symbols-rounded item-icon">folder</span>
+                        <span x-text="suggestion" class="item-text"></span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <button x-show="isMobile" class="icon-btn" @click="showMobileSftp = false" style="margin-left: 8px; margin-top: 0; font-size: 20px; padding: 4px; line-height: 1;"><span class="material-symbols-rounded">close</span></button>
+            </div>
+            <div class="file-actions">
+              <button @click="goParentDir()">上级</button>
+              <button @click="refreshFiles()">刷新</button>
+              <button @click="promptMkdir()">新建目录</button>
+              <button @click="promptWriteFile()">新建文件</button>
+              <button @click="pasteClipboard()">粘贴</button>
+              <button @click="triggerUpload()">上传</button>
+              <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
+            </div>
+            <div class="crumbs">
+              <template x-for="(segment, index) in pathSegments" :key="segment.fullPath">
+                <span>
+                  <button @click="jumpToPath(segment.fullPath)" x-text="segment.label"></button>
+                  <span x-show="index < pathSegments.length - 1">/</span>
+                </span>
+              </template>
+            </div>
+            <div class="file-list">
+              <template x-if="!activeSessionId">
+                <div class="empty">连接 SSH 后显示远端文件。</div>
+              </template>
+              <template x-for="entry in files" :key="entry.filename">
+                <div class="file-item" @contextmenu="showContextMenu($event, entry)">
+                  <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)">
+                    <span :class="getFileIconClass(entry)">
+                      <span class="material-symbols-rounded" x-text="getFileIcon(entry)" style="font-size: 20px;"></span>
+                    </span>
+                    <span>
+                      <strong x-text="entry.filename"></strong>
+                      <small x-text="(entry.isDir ? '文件夹' : formatSize(entry.size)) + ' · ' + formatUnix(entry.mtime)"></small>
+                    </span>
+                  </button>
+                  <div class="file-tools">
+                    <button x-show="!entry.isDir" @click="readFile(entry.filename)">编辑</button>
+                    <button @click="renameEntry(entry)">改名</button>
+                    <button @click="copyEntry(entry)">复制</button>
+                    <button @click="cutEntry(entry)">剪切</button>
+                    <button x-show="!entry.isDir" @click="downloadEntry(entry)">下载</button>
+                    <button class="danger-text" @click="removeEntry(entry)">删除</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          
+            </div>
+            
+            <div x-show="rightTab === 'status'" style="display: flex; flex-direction: column; height: 100%;">
+              
             <div class="panel-head">
               <h2>服务器状态</h2>
               <button x-show="!isMobile" @click="refreshFiles()">刷新</button>
-              <button x-show="isMobile" @click="showMobileStatus = false">×</button>
+              <button x-show="isMobile" class="icon-btn" @click="showMobileStatus = false" style="font-size: 20px; padding: 4px; line-height: 1;"><span class="material-symbols-rounded">close</span></button>
             </div>
             <template x-if="activeStatus">
               <div class="status-list">
@@ -290,7 +326,14 @@
             <template x-if="!activeStatus">
               <div class="empty">暂无状态</div>
             </template>
+          
+            </div>
+
+            <div x-show="rightTab === 'snippets'" style="display: flex; flex-direction: column; height: 100%;">
+               <div class="empty">敬请期待片段功能</div>
+            </div>
           </aside>
+
         </main>
 
         <div x-show="showConnectionManager" class="modal-backdrop" @click.self="closeConnectionManager()">

@@ -690,13 +690,17 @@ function shadowApp() {
       if (this.terminals[id]) return;
       const el = document.getElementById(`terminal-${id}`);
       if (!el || !window.Terminal) return;
+      const isMobileDevice = this.isMobile;
       const term = new window.Terminal({ 
         cursorBlink: true, 
-        fontSize: 14, 
-        fontFamily: '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace',
-        theme: { background: '#020617' }, 
+        fontSize: isMobileDevice ? 13 : 14, 
+        fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace',
+        theme: { background: '#1c1c1c' }, 
         convertEol: true, 
-        scrollback: 5000 
+        scrollback: 5000,
+        allowProposedApi: true,
+        rightClickSelectsWord: isMobileDevice,
+        scrollOnUserInput: true
       });
       const fit = window.FitAddon ? new window.FitAddon.FitAddon() : null;
       const search = window.SearchAddon ? new window.SearchAddon.SearchAddon() : null;
@@ -735,6 +739,42 @@ function shadowApp() {
       this.searchAddons[id] = search;
       this.fitAddons[id] = fit;
       window.addEventListener('resize', () => this.resizeActiveTerminal(id));
+
+      if (this.isMobile) {
+        const viewport = el.querySelector('.xterm-viewport');
+        if (viewport) {
+          let touchStartY = 0;
+          let touchStartX = 0;
+          let isTouchScrolling = false;
+
+          el.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+              touchStartY = e.touches[0].clientY;
+              touchStartX = e.touches[0].clientX;
+              isTouchScrolling = false;
+            }
+          }, { passive: true });
+
+          el.addEventListener('touchmove', (e) => {
+            if (e.touches.length !== 1) return;
+            const deltaY = touchStartY - e.touches[0].clientY;
+            const deltaX = Math.abs(touchStartX - e.touches[0].clientX);
+            
+            if (Math.abs(deltaY) > deltaX && Math.abs(deltaY) > 5) {
+              isTouchScrolling = true;
+              const lines = Math.round(deltaY / 15);
+              if (lines !== 0) {
+                term.scrollLines(lines);
+                touchStartY = e.touches[0].clientY;
+              }
+            }
+          }, { passive: true });
+
+          el.addEventListener('touchend', () => {
+            isTouchScrolling = false;
+          }, { passive: true });
+        }
+      }
     },
 
     toggleFullscreen() {
@@ -979,11 +1019,11 @@ function shadowApp() {
             inherit: true,
             rules: [],
             colors: {
-              'editor.background': '#0f172a',
-              'editor.lineHighlightBackground': '#1e293b55',
-              'editorCursor.foreground': '#6366f1',
-              'editor.selectionBackground': '#6366f133',
-              'editor.inactiveSelectionBackground': '#6366f111'
+              'editor.background': '#1c1c1c',
+              'editor.lineHighlightBackground': '#2d2d2d',
+              'editorCursor.foreground': '#60CDFF',
+              'editor.selectionBackground': '#264F78',
+              'editor.inactiveSelectionBackground': '#264F7844'
             }
           });
           window.monaco.editor.defineTheme('slatessh-light', {
@@ -992,10 +1032,10 @@ function shadowApp() {
             rules: [],
             colors: {
               'editor.background': '#ffffff',
-              'editor.lineHighlightBackground': '#f3f4f6aa',
-              'editorCursor.foreground': '#4f46e5',
-              'editor.selectionBackground': '#4f46e522',
-              'editor.inactiveSelectionBackground': '#4f46e511'
+              'editor.lineHighlightBackground': '#f3f3f3',
+              'editorCursor.foreground': '#005fb8',
+              'editor.selectionBackground': '#ADD6FF',
+              'editor.inactiveSelectionBackground': '#ADD6FF66'
             }
           });
           window.monacoThemesDefined = true;
@@ -1231,6 +1271,86 @@ function shadowApp() {
         setTimeout(() => this.terminals[this.activeSessionId]?.focus(), 10);
       }
     },
+
+    async mobileTerminalPaste() {
+      if (!this.activeSessionId) return;
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: text } });
+          this.refocusTerminal();
+        }
+      } catch (err) {
+        // Fallback for Safari if permission is not granted automatically
+        const input = document.createElement('input');
+        input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+        document.body.appendChild(input);
+        input.focus();
+        input.addEventListener('paste', (e) => {
+          const pasteData = e.clipboardData?.getData('text');
+          if (pasteData && this.activeSessionId) {
+            this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: pasteData } });
+          }
+          input.remove();
+          this.refocusTerminal();
+        }, { once: true });
+        document.execCommand('paste');
+        setTimeout(() => input.remove(), 1000);
+      }
+    },
+
+    async mobileTerminalCopy() {
+      if (!this.activeSessionId || !this.terminals[this.activeSessionId]) return;
+      const text = this.terminals[this.activeSessionId].getSelection();
+      if (!text) {
+        this.testMessage = '请先在终端中选择文本';
+        this.testMessageType = 'warn';
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        this.testMessage = '已复制到剪贴板';
+        this.testMessageType = 'success';
+      } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:-9999px;opacity:0;';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        this.testMessage = '已复制到剪贴板';
+        this.testMessageType = 'success';
+      }
+    },
+
+    async mobileTerminalPaste() {
+      if (!this.activeSessionId) return;
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: text } });
+          this.refocusTerminal();
+        }
+      } catch (err) {
+        // Fallback: show a temporary input to let user paste manually
+        const input = document.createElement('input');
+        input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+        document.body.appendChild(input);
+        input.focus();
+        input.addEventListener('paste', (e) => {
+          const pasteData = e.clipboardData?.getData('text');
+          if (pasteData && this.activeSessionId) {
+            this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: pasteData } });
+          }
+          input.remove();
+          this.refocusTerminal();
+        }, { once: true });
+        document.execCommand('paste');
+        setTimeout(() => input.remove(), 1000);
+      }
+    },
+
 
     async sendQuick(command) {
       if (!this.activeSessionId) return;
