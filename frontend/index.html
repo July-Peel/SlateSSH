@@ -54,7 +54,7 @@
           
           <div class="topbar-actions" style="justify-content: flex-start; flex: 1;">
             <button @click="showMobileMenu = !showMobileMenu" class="icon-btn topbar-shortcut"><span class="material-symbols-rounded">menu</span></button>
-            <div class="brand" style="margin-left: 8px;">Swell SSH</div>
+            <div class="brand" style="margin-left: 8px;">SlateSSH</div>
           </div>
           <div class="topbar-actions">
             <button @click="showConnectionManager = true" class="topbar-shortcut"><span class="material-symbols-rounded" style="font-size:18px;">dns</span> 连接</button>
@@ -65,11 +65,7 @@
 
         </header>
 
-        
-          <button class="fab-main" @click="fabOpen = !fabOpen" :class="fabOpen ? 'open' : ''">
-            <span class="material-symbols-rounded">apps</span>
-          </button>
-        </div>
+
 
         <div class="drawer-overlay" x-show="isMobile && (showMobileSftp || showMobileStatus)" @click="showMobileSftp = false; showMobileStatus = false"></div>
 
