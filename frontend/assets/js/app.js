@@ -21,6 +21,8 @@ function shadowApp() {
     files: [],
     statuses: {},
     theme: localStorage.getItem('slatessh-theme') || 'light',
+    rightTab: 'files',
+    showSidebar: true,
     showStatusWidget: true,
     showSftpWidget: true,
     pathInput: '',
