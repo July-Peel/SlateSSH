@@ -58,9 +58,41 @@ function shadowApp() {
     showMobileStatus: false,
     showMobileMenu: false,
     ctrlKeyActive: false,
+    collapsedGroups: [],
 
     get activeStatus() {
       return this.activeSessionId ? this.statuses[this.activeSessionId] : null;
+    },
+
+    get groupedConnections() {
+      const groups = {};
+      for (const conn of this.connections) {
+        let groupName = 'Other';
+        if (conn.notes && conn.notes.startsWith('group:')) {
+           groupName = conn.notes.split('\n')[0].substring(6).trim();
+        } else if (conn.notes && conn.notes.split('\n')[0].length < 15) {
+           groupName = conn.notes.split('\n')[0].trim();
+        } else {
+           if (conn.name.toLowerCase().includes('aliyun') || conn.name.includes('阿里')) {
+             groupName = '阿里云';
+           } else if (conn.name.toLowerCase().includes('tencent') || conn.name.includes('腾讯')) {
+             groupName = '腾讯云';
+           } else if (conn.name.toLowerCase().includes('aws') || conn.name.includes('亚马逊')) {
+             groupName = 'AWS';
+           }
+        }
+        if (!groups[groupName]) groups[groupName] = { name: groupName, collapsed: false, items: [] };
+        groups[groupName].items.push(conn);
+      }
+      return Object.values(groups).sort((a,b) => a.name === 'Other' ? 1 : b.name === 'Other' ? -1 : a.name.localeCompare(b.name));
+    },
+
+    toggleGroup(groupName) {
+      // Since groupedConnections is computed, we need to track collapsed state separately, or just attach it to a reactive state.
+      // But getters are re-evaluated. Let's store collapsed groups in an array.
+      const idx = this.collapsedGroups.indexOf(groupName);
+      if (idx > -1) this.collapsedGroups.splice(idx, 1);
+      else this.collapsedGroups.push(groupName);
     },
 
     get activeEditorTab() {
@@ -697,9 +729,30 @@ function shadowApp() {
         cursorBlink: true, 
         fontSize: isMobileDevice ? 13 : 14, 
         fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace',
-        theme: { background: '#1c1c1c' }, 
+        theme: { 
+          background: '#00000000',
+          foreground: this.theme === 'light' ? '#24292e' : '#e1e4e8',
+          cursor: this.theme === 'light' ? '#24292e' : '#e1e4e8',
+          black: '#24292e',
+          red: '#d73a49',
+          green: '#28a745',
+          yellow: '#b08800',
+          blue: '#0366d6',
+          magenta: '#5a32a3',
+          cyan: '#0598bc',
+          white: '#6a737d',
+          brightBlack: '#959da5',
+          brightRed: '#cb2431',
+          brightGreen: '#22863a',
+          brightYellow: '#b08800',
+          brightBlue: '#005cc5',
+          brightMagenta: '#5a32a3',
+          brightCyan: '#3192aa',
+          brightWhite: '#d1d5da'
+        }, 
         convertEol: true, 
         scrollback: 5000,
+        allowTransparency: true,
         allowProposedApi: true,
         rightClickSelectsWord: isMobileDevice,
         scrollOnUserInput: true

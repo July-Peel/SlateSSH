@@ -6,20 +6,20 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#030712">
-  <title>SlateSSH Go</title>
+  <meta name="theme-color" content="#ffffff">
+  <title>Swell SSH</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260601_fullscreen_fixed">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260611_ui_refactor">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
     <template x-if="booting">
-      <div class="auth-page"><div class="boot-brand">SlateSSH</div></div>
+      <div class="auth-page"><div class="boot-brand">Swell SSH</div></div>
     </template>
 
     <template x-if="!booting && needsSetup">
@@ -38,7 +38,7 @@
     <template x-if="!booting && !needsSetup && !authenticated">
       <div class="auth-page">
         <form @submit.prevent="login()" class="auth-card">
-          <h1>SlateSSH</h1>
+          <h1>Swell SSH</h1>
           <input x-model="loginForm.username" autocomplete="username" placeholder="用户名">
           <input x-model="loginForm.password" type="password" autocomplete="current-password" placeholder="密码">
           <label class="check-row"><input type="checkbox" x-model="loginForm.rememberMe">记住我</label>
@@ -51,91 +51,87 @@
     <template x-if="!booting && authenticated">
       <div class="workspace">
         <header class="topbar">
-          
           <div class="topbar-actions" style="justify-content: flex-start; flex: 1;">
             <button @click="isMobile ? showMobileMenu = !showMobileMenu : showSidebar = !showSidebar" class="icon-btn topbar-shortcut"><span class="material-symbols-rounded">menu</span></button>
-            <div class="brand" style="margin-left: 8px;">SlateSSH</div>
+            <div class="window-icon" style="margin-left: 4px; color: var(--accent);"><span class="material-symbols-rounded" style="font-size: 20px;">dock_to_right</span></div>
+            <div class="brand" style="margin-left: 6px;">Swell SSH</div>
           </div>
           <div class="topbar-actions">
-            <button @click="showConnectionManager = true" class="topbar-shortcut"><span class="material-symbols-rounded" style="font-size:18px;">dns</span> 连接</button>
+            <button @click="showConnectionManager = true" class="topbar-shortcut" style="display:none;"><span class="material-symbols-rounded" style="font-size:18px;">dns</span></button>
             <button @click="toggleFullscreen()" class="topbar-shortcut" x-show="activeSessionId"><span class="material-symbols-rounded" style="font-size:18px;" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'">fullscreen</span></button>
-            <div class="user-avatar" x-text="(currentUser?.username || '?')[0]"></div>
-            <button @click="logout()" class="danger icon-btn" title="退出"><span class="material-symbols-rounded">logout</span></button>
+            <div class="user-avatar" x-text="(currentUser?.username || '?')[0]" style="display:none;"></div>
+            <div class="window-controls">
+              <span class="material-symbols-rounded">minimize</span>
+              <span class="material-symbols-rounded">crop_square</span>
+              <span class="material-symbols-rounded">close</span>
+            </div>
           </div>
-
         </header>
-
-
 
         <div class="drawer-overlay" x-show="isMobile && (showMobileSftp || showMobileStatus)" @click="showMobileSftp = false; showMobileStatus = false"></div>
 
-        <main class="main-grid" :style="`grid-template-columns: ${isMobile ? '1fr' : ((showSidebar ? '280px ' : '0px ') + 'minmax(0, 1fr) ' + ((showSftpWidget || showStatusWidget) ? '320px' : '0px'))}`">
+        <main class="main-grid" :style="`grid-template-columns: ${isMobile ? '1fr' : ((showSidebar ? '300px ' : '0px ') + 'minmax(0, 1fr) ' + ((showSftpWidget || showStatusWidget) ? '340px' : '0px'))}`">
           
           <aside class="connection-panel" x-show="isMobile ? showMobileMenu : showSidebar" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
-            <div class="panel-head" style="margin-bottom: 16px;">
-              <h2>SSH 连接</h2>
-              <div class="path-input-wrapper" style="margin-top: 8px;">
+            <div class="panel-head" style="margin-bottom: 12px;">
+              <h2 style="font-size: 18px; font-weight: 500;">SSH 连接</h2>
+              <div class="path-input-wrapper" style="margin-top: 12px; position: relative;">
                 <input x-model="commandInput" placeholder="快速连接 user@host:port" class="path-input" @keydown.enter="sendCommandInput()">
-                <button @click="sendCommandInput()" class="path-go-btn" title="连接"><span class="material-symbols-rounded">play_arrow</span></button>
+                <button @click="sendCommandInput()" class="path-go-btn" title="连接" style="position: absolute; right: 4px;"><span class="material-symbols-rounded" style="font-size: 18px;">play_arrow</span></button>
               </div>
             </div>
             
             <div class="connection-list" style="overflow-y: auto; flex: 1; padding-bottom: 12px; margin: -8px; padding: 8px;">
-              <template x-for="connection in connections" :key="connection.id">
-                <div class="connection-item" style="padding: 8px 12px; position: relative;">
-                  <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                    <div style="cursor: pointer; flex: 1;" @click="editConnection(connection); showConnectionManager = true;">
-                      <strong style="font-size: 14px; margin-bottom: 2px;">
-                        <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: text-bottom; margin-right: 4px;" :style="connection.type === 'RDP' ? 'color:#107c10' : 'color:var(--accent)'" x-text="connection.type === 'RDP' ? 'desktop_windows' : 'terminal'"></span>
-                        <span x-text="connection.name"></span>
-                      </strong>
-                      <small style="color: var(--text-secondary);"><span x-text="(connection.type === 'SSH' ? connection.username + '@' : '') + connection.host + ':' + connection.port"></span></small>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 8px;">
-                      <button class="icon-btn primary" @click.stop="openSession(connection)" style="padding: 2px 6px; min-height: auto; border-radius: 4px;" title="连接">
-                        <span class="material-symbols-rounded" style="font-size: 16px;">play_arrow</span>
-                      </button>
-                    </div>
+              <template x-for="group in groupedConnections" :key="group.name">
+                <div class="connection-group">
+                  <div class="group-header" @click="toggleGroup(group.name)">
+                    <span class="material-symbols-rounded group-chevron" :style="collapsedGroups.includes(group.name) ? 'transform: rotate(-90deg)' : ''">expand_more</span>
+                    <span class="group-name" x-text="group.name"></span>
+                  </div>
+                  <div class="group-items" x-show="!collapsedGroups.includes(group.name)">
+                    <template x-for="connection in group.items" :key="connection.id">
+                      <div class="connection-item" :class="activeSessionId === connection.id ? 'active' : ''" @click="openSession(connection)">
+                        <div class="item-main">
+                          <span class="item-icon" x-text="connection.name.toLowerCase().includes('ubuntu') ? '🐧' : (connection.name.toLowerCase().includes('debian') ? '🌀' : '🚜')"></span>
+                          <span class="item-name" x-text="connection.name"></span>
+                          <span class="material-symbols-rounded star-icon" :style="connection.name.includes('Mami') ? 'color: #f59e0b' : ''">star</span>
+                        </div>
+                        <div class="item-sub">
+                          <span x-text="connection.username + '@' + connection.host.replace(/[0-9]/g, '*') + ':' + connection.port"></span>
+                        </div>
+                        <button class="icon-btn hide-icon" @click.stop="editConnection(connection); showConnectionManager = true;" title="编辑"><span class="material-symbols-rounded" style="font-size:16px;">visibility_off</span></button>
+                      </div>
+                    </template>
                   </div>
                 </div>
               </template>
               <div class="empty" x-show="!connections.length" style="padding-top: 24px;">暂无已保存的连接</div>
             </div>
 
-            <div class="panel-footer" style="margin-top: auto; padding-top: 12px; border-top: 1px solid var(--divider); display: flex; gap: 4px; align-items: center;">
-              <button class="primary" style="flex: 1; justify-content: flex-start;" @click="editConnection(null); showConnectionManager = true;">
+            <div class="panel-footer" style="margin-top: auto; padding-top: 16px; display: flex; gap: 8px; align-items: center;">
+              <button class="primary" style="flex: 1; justify-content: center; padding: 8px; font-weight: 500;" @click="editConnection(null); showConnectionManager = true;">
                 <span class="material-symbols-rounded">add</span> 新建连接
               </button>
-              <button class="icon-btn" @click="editConnection(connections[0] || null); showConnectionManager = true;" title="编辑"><span class="material-symbols-rounded">edit</span></button>
-              <button class="icon-btn" @click="showConnectionManager = true;" title="管理"><span class="material-symbols-rounded">settings</span></button>
-              <button class="icon-btn" @click="toggleTheme()" :title="theme === 'dark' ? '白天模式' : '夜间模式'"><span class="material-symbols-rounded" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'"></span></button>
+              <button class="icon-btn" style="background: var(--control-fill); border: 1px solid var(--border-strong);" @click="editConnection(connections[0] || null); showConnectionManager = true;" title="编辑"><span class="material-symbols-rounded" style="font-size: 18px;">edit</span></button>
+              <button class="icon-btn" style="background: var(--control-fill); border: 1px solid var(--border-strong);" @click="showConnectionManager = true;" title="删除"><span class="material-symbols-rounded" style="font-size: 18px;">delete</span></button>
+              <button class="icon-btn" style="background: var(--control-fill); border: 1px solid var(--border-strong);" @click="showConnectionManager = true;" title="管理"><span class="material-symbols-rounded" style="font-size: 18px;">settings</span></button>
+              <button class="icon-btn" style="background: var(--control-fill); border: 1px solid var(--border-strong);" @click="toggleTheme()" :title="theme === 'dark' ? '白天模式' : '夜间模式'"><span class="material-symbols-rounded" style="font-size: 18px;" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'"></span></button>
             </div>
           </aside>
-
 
           <section class="terminal-panel" :class="isFullscreen ? 'has-fullscreen' : ''">
             <div class="tabbar">
               <template x-for="tab in sessions" :key="tab.id">
-                <button @click="activateSession(tab.id)" class="tab" :class="activeSessionId === tab.id ? 'active' : ''">
-                  <span class="tab-dot" :class="tab.connected ? 'online' : 'offline'"></span>
-                  <span x-text="tab.name"></span>
-                  <span class="tab-close" @click.stop="closeTab(tab.id)">&times;</span>
-                </button>
-              </template>
-              <div class="tab-empty" x-show="!sessions.length">暂无活动会话</div>
-            </div>
-
-            <div class="terminal-tools" x-show="activeSessionId && !isMobile">
-              <template x-if="activeSessionType() !== 'RDP'">
-                <div style="display:contents;">
-                  <input x-model="terminalSearch" @keydown.enter.prevent="searchTerminal()" placeholder="搜索终端输出">
-                  <button @click="searchTerminal()">搜索</button>
-                  <button @click="findNextTerminalResult()">下一个</button>
-                  <button @click="copyTerminalSelection()">复制选中</button>
+                <div class="tab-wrapper" :class="activeSessionId === tab.id ? 'active' : ''">
+                  <button @click="activateSession(tab.id)" class="tab" :class="activeSessionId === tab.id ? 'active' : ''">
+                    <span class="tab-icon" x-text="tab.name.toLowerCase().includes('ubuntu') ? '🐧' : '🚜'" style="font-size: 14px; margin-right: 4px;"></span>
+                    <span x-text="tab.name"></span>
+                    <span class="tab-close" @click.stop="closeTab(tab.id)"><span class="material-symbols-rounded" style="font-size:14px;">close</span></span>
+                  </button>
                 </div>
               </template>
-              <div class="spacer"></div>
-              <button @click="toggleFullscreen()" x-text="isFullscreen ? '退出全屏' : '网页全屏'">网页全屏</button>
+              <button class="tab-new" @click="showConnectionManager = true"><span class="material-symbols-rounded" style="font-size:18px;">add</span></button>
+              <div class="tab-empty" x-show="!sessions.length" style="padding: 4px 12px;">暂无活动会话</div>
             </div>
 
             <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
@@ -157,175 +153,121 @@
                 </div>
               </template>
             </div>
-
-            <div class="mobile-keyboard" x-show="isMobile && activeSessionType() !== 'RDP'" style="display: none;">
-              <button @click="ctrlKeyActive = !ctrlKeyActive; refocusTerminal()" :style="ctrlKeyActive ? 'background: var(--accent); color: var(--accent-text); border-color: var(--accent);' : ''">Ctrl</button>
-              <button @click="sendQuick('\x1b')">Esc</button>
-              <button @click="sendQuick('\x09')">Tab</button>
-              <button @click="sendQuick('\x1b[A')">↑</button>
-              <button @click="sendQuick('\x1b[B')">↓</button>
-              <button @click="sendQuick('\x1b[D')">←</button>
-              <button @click="sendQuick('\x1b[C')">→</button>
-              <button @click="sendQuick('|')">|</button>
-              <button @click="sendQuick('/')">/</button>
-            </div>
-
-            <div class="mobile-terminal-actions" x-show="isMobile && activeSessionType() !== 'RDP'" style="display: none;">
-              <button @click="mobileTerminalCopy()"><span class="material-symbols-rounded" style="font-size:14px;vertical-align:bottom;">content_copy</span> 复制</button>
-              <button @click="mobileTerminalPaste()"><span class="material-symbols-rounded" style="font-size:14px;vertical-align:bottom;">content_paste</span> 粘贴</button>
-              <button @click="sendQuick('\x03')" class="danger-text">Ctrl+C</button>
-            </div>
-
-            <div class="commandbar" x-show="(!activeSessionId || activeSessionType() !== 'RDP') && !isMobile">
-              <button @click="sendQuick('\x03')" x-show="!isMobile">Ctrl+C</button>
-              <button @click="sendQuick('clear')" x-show="!isMobile">clear</button>
-              <button @click="sendQuick('exit')" x-show="!isMobile">exit</button>
-              <input x-model="commandInput" @keydown.enter.prevent="sendCommandInput()" placeholder="输入命令后按 Enter 发送">
-              <button @click="sendCommandInput()" class="primary">发送</button>
-            </div>
-            <p class="status-line" :class="testMessageType" x-text="testMessage"></p>
+            
+            <p class="status-line" style="display:none;" :class="testMessageType" x-text="testMessage"></p>
           </section>
 
-          
           <aside class="side-panel" x-show="!isMobile ? (showSftpWidget || showStatusWidget) : true" :class="isMobile ? (showMobileStatus ? 'mobile-drawer right open' : 'mobile-drawer right') : ''">
-            <div class="side-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--divider); padding-bottom: 8px;">
-              <button class="icon-btn" :class="rightTab === 'files' ? 'primary' : ''" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false" title="文件"><span class="material-symbols-rounded">folder</span></button>
-              <button class="icon-btn" :class="rightTab === 'status' ? 'primary' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false" title="状态监控"><span class="material-symbols-rounded">speed</span></button>
+            <div class="side-tabs top-icons">
+              <button class="icon-btn" :class="rightTab === 'files' ? 'active' : ''" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false" title="文件"><span class="material-symbols-rounded">folder</span></button>
+              <button class="icon-btn" :class="rightTab === 'snippets' ? 'active' : ''" @click="rightTab = 'snippets'" title="代码片段"><span class="material-symbols-rounded">data_object</span></button>
+              <button class="icon-btn" :class="rightTab === 'status' ? 'active' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false" title="状态监控"><span class="material-symbols-rounded">schedule</span></button>
+              <button class="icon-btn" title="设置"><span class="material-symbols-rounded">palette</span></button>
               <div style="flex:1"></div>
               <button class="icon-btn" x-show="isMobile" @click="showMobileStatus = false"><span class="material-symbols-rounded">close</span></button>
             </div>
 
             <div x-show="rightTab === 'files'" style="display: flex; flex-direction: column; height: 100%;">
-              
-            <div class="panel-head">
-              <div style="width: 100%;">
+              <div class="panel-head" style="display:none;">
                 <h2>SFTP 文件</h2>
-                <div class="path-bar-container" @click.away="showPathDropdown = false">
-                  <div class="path-input-wrapper">
-                    <span class="material-symbols-rounded path-icon">folder_open</span>
-                    <input 
-                      type="text" 
-                      x-model="pathInput"
-                      @focus="showPathDropdown = true; activeSuggestionIndex = -1"
-                      @keydown.down.prevent="navigateSuggestions(1)"
-                      @keydown.up.prevent="navigateSuggestions(-1)"
-                      @keydown.enter.prevent="selectSuggestionOrSubmit()"
-                      @keydown.escape="showPathDropdown = false"
-                      class="path-input"
-                      placeholder="跳转路径，如 /etc..."
-                    >
-                    <button @click="submitPath()" class="path-go-btn" title="跳转">
-                      <span class="material-symbols-rounded" style="font-size: 20px;">arrow_forward</span>
-                    </button>
-                  </div>
-                  <div 
-                    x-show="showPathDropdown && getPathSuggestions().length > 0" 
-                    class="path-dropdown"
-                    style="display: none;"
-                  >
-                    <template x-for="(suggestion, idx) in getPathSuggestions()" :key="suggestion">
-                      <div 
-                        @click="selectPathSuggestion(suggestion)"
-                        class="path-dropdown-item"
-                        :class="activeSuggestionIndex === idx ? 'active' : ''"
-                      >
-                        <span class="material-symbols-rounded item-icon">folder</span>
-                        <span x-text="suggestion" class="item-text"></span>
-                      </div>
-                    </template>
-                  </div>
+              </div>
+              <div class="path-bar-container" @click.away="showPathDropdown = false" style="margin-top: 0; margin-bottom: 12px;">
+                <div class="path-input-wrapper">
+                  <span class="material-symbols-rounded path-icon" style="font-size:16px;">folder_open</span>
+                  <input type="text" x-model="pathInput" @focus="showPathDropdown = true; activeSuggestionIndex = -1" @keydown.down.prevent="navigateSuggestions(1)" @keydown.up.prevent="navigateSuggestions(-1)" @keydown.enter.prevent="selectSuggestionOrSubmit()" @keydown.escape="showPathDropdown = false" class="path-input" placeholder="跳转路径...">
+                  <button @click="submitPath()" class="path-go-btn" title="跳转"><span class="material-symbols-rounded" style="font-size: 16px;">arrow_forward</span></button>
                 </div>
               </div>
-              <button x-show="isMobile" class="icon-btn" @click="showMobileSftp = false" style="margin-left: 8px; margin-top: 0; font-size: 20px; padding: 4px; line-height: 1;"><span class="material-symbols-rounded">close</span></button>
-            </div>
-            <div class="file-actions">
-              <button @click="goParentDir()">上级</button>
-              <button @click="refreshFiles()">刷新</button>
-              <button @click="promptMkdir()">新建目录</button>
-              <button @click="promptWriteFile()">新建文件</button>
-              <button @click="pasteClipboard()">粘贴</button>
-              <button @click="triggerUpload()">上传</button>
-              <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
-            </div>
-            <div class="crumbs">
-              <template x-for="(segment, index) in pathSegments" :key="segment.fullPath">
-                <span>
-                  <button @click="jumpToPath(segment.fullPath)" x-text="segment.label"></button>
-                  <span x-show="index < pathSegments.length - 1">/</span>
-                </span>
-              </template>
-            </div>
-            <div class="file-list">
-              <template x-if="!activeSessionId">
-                <div class="empty">连接 SSH 后显示远端文件。</div>
-              </template>
-              <template x-for="entry in files" :key="entry.filename">
-                <div class="file-item" @contextmenu="showContextMenu($event, entry)">
-                  <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)">
-                    <span :class="getFileIconClass(entry)">
-                      <span class="material-symbols-rounded" x-text="getFileIcon(entry)" style="font-size: 20px;"></span>
-                    </span>
-                    <span>
-                      <strong x-text="entry.filename"></strong>
-                      <small x-text="(entry.isDir ? '文件夹' : formatSize(entry.size)) + ' · ' + formatUnix(entry.mtime)"></small>
-                    </span>
-                  </button>
-                  <div class="file-tools">
-                    <button x-show="!entry.isDir" @click="readFile(entry.filename)">编辑</button>
-                    <button @click="renameEntry(entry)">改名</button>
-                    <button @click="copyEntry(entry)">复制</button>
-                    <button @click="cutEntry(entry)">剪切</button>
-                    <button x-show="!entry.isDir" @click="downloadEntry(entry)">下载</button>
-                    <button class="danger-text" @click="removeEntry(entry)">删除</button>
+              
+              <div class="file-actions" style="grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                <button @click="goParentDir()" style="background: var(--control-fill);">上级</button>
+                <button @click="refreshFiles()" style="background: var(--control-fill);">刷新</button>
+                <button @click="promptMkdir()" style="background: var(--control-fill);">新建目录</button>
+                <button @click="promptWriteFile()" style="background: var(--control-fill);">新建文件</button>
+                <button @click="pasteClipboard()" style="background: var(--control-fill);">粘贴</button>
+                <button @click="triggerUpload()" style="background: var(--control-fill);">上传</button>
+                <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
+              </div>
+              
+              <div class="file-list" style="margin-top: 12px; background: transparent;">
+                <template x-if="!activeSessionId">
+                  <div class="empty" style="padding-top: 40px;">连接 SSH 后显示远端文件。</div>
+                </template>
+                <template x-for="entry in files" :key="entry.filename">
+                  <div class="file-item" @contextmenu="showContextMenu($event, entry)">
+                    <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)">
+                      <span :class="getFileIconClass(entry)" style="background: transparent; color: var(--accent);">
+                        <span class="material-symbols-rounded" x-text="getFileIcon(entry)" style="font-size: 20px;"></span>
+                      </span>
+                      <span>
+                        <strong x-text="entry.filename"></strong>
+                      </span>
+                    </button>
+                    <div class="file-tools" style="display:none;"></div>
                   </div>
-                </div>
-              </template>
-            </div>
-          
+                </template>
+              </div>
             </div>
             
             <div x-show="rightTab === 'status'" style="display: flex; flex-direction: column; height: 100%;">
-              
-            <div class="panel-head">
-              <h2>服务器状态</h2>
-              <button x-show="!isMobile" @click="refreshFiles()">刷新</button>
-              <button x-show="isMobile" class="icon-btn" @click="showMobileStatus = false" style="font-size: 20px; padding: 4px; line-height: 1;"><span class="material-symbols-rounded">close</span></button>
-            </div>
-            <template x-if="activeStatus">
-              <div class="status-list">
-                <div class="status-info-row"><span>系统</span><strong x-text="activeStatus.osName || '-' "></strong></div>
-                <div class="status-info-row"><span>IP</span><strong x-text="activeStatus.serverIp || '-' "></strong></div>
-                <div class="status-grid">
-                  <div class="status-circle" :class="(activeStatus.cpuPercent || 0) > 85 ? 'level-danger' : (activeStatus.cpuPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
-                    <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.cpuPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
-                    <div class="inner">
-                      <strong x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></strong>
-                      <span>CPU</span>
-                    </div>
-                  </div>
-                  <div class="status-circle" :class="(activeStatus.memPercent || 0) > 85 ? 'level-danger' : (activeStatus.memPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
-                    <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.memPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
-                    <div class="inner">
-                      <strong x-text="Math.round(activeStatus.memPercent || 0) + '%'"></strong>
-                      <span>内存</span>
-                    </div>
-                  </div>
-                  <div class="status-circle" :class="(activeStatus.diskPercent || 0) > 85 ? 'level-danger' : (activeStatus.diskPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
-                    <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.diskPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
-                    <div class="inner">
-                      <strong x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></strong>
-                      <span>磁盘</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">download</span> 下行</span><strong x-text="bytes(activeStatus.netRxRate)"></strong></div>
-                <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">upload</span> 上行</span><strong x-text="bytes(activeStatus.netTxRate)"></strong></div>
+              <div class="panel-head" style="margin-bottom: 0;">
+                <h2 style="font-size: 16px;">服务器状态</h2>
+                <button x-show="!isMobile" @click="refreshFiles()" class="icon-btn"><span class="material-symbols-rounded" style="font-size: 16px;">refresh</span></button>
               </div>
-            </template>
-            <template x-if="!activeStatus">
-              <div class="empty">暂无状态</div>
-            </template>
-          
+              <template x-if="activeStatus">
+                <div class="status-list" style="margin-top: 12px;">
+                  <div class="status-info-row"><span>系统</span><strong x-text="activeStatus.osName || '-' "></strong></div>
+                  <div class="status-info-row"><span>IP</span><strong x-text="activeStatus.serverIp || '-' "></strong></div>
+                  <div class="status-grid">
+                    <div class="status-circle" :class="(activeStatus.cpuPercent || 0) > 85 ? 'level-danger' : (activeStatus.cpuPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
+                      <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.cpuPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
+                      <div class="inner">
+                        <strong x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></strong>
+                        <span>CPU</span>
+                      </div>
+                    </div>
+                    <div class="status-circle" :class="(activeStatus.memPercent || 0) > 85 ? 'level-danger' : (activeStatus.memPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
+                      <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.memPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
+                      <div class="inner">
+                        <strong x-text="Math.round(activeStatus.memPercent || 0) + '%'"></strong>
+                        <span>内存</span>
+                      </div>
+                    </div>
+                    <div class="status-circle" :class="(activeStatus.diskPercent || 0) > 85 ? 'level-danger' : (activeStatus.diskPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
+                      <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.diskPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
+                      <div class="inner">
+                        <strong x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></strong>
+                        <span>磁盘</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">download</span> 下行</span><strong x-text="bytes(activeStatus.netRxRate)"></strong></div>
+                  <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">upload</span> 上行</span><strong x-text="bytes(activeStatus.netTxRate)"></strong></div>
+                </div>
+              </template>
+              <template x-if="!activeStatus">
+                <div class="empty" style="padding-top: 40px;">暂无状态</div>
+              </template>
+            </div>
+
+            <div x-show="rightTab === 'snippets'" style="display: flex; flex-direction: column; height: 100%;">
+              <button class="primary" style="margin-bottom: 12px;"><span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">add</span> 新建代码片段</button>
+              <div class="connection-list" style="margin: 0;">
+                <div class="connection-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px;">
+                  <div>
+                    <strong style="font-size: 13px; display: block;">系统更新</strong>
+                    <small style="color: var(--text-secondary); font-size: 11px;">sudo apt update && sudo apt upgrade -y</small>
+                  </div>
+                  <button class="icon-btn" style="border: 1px solid var(--border-strong); background: var(--control-fill);"><span class="material-symbols-rounded" style="font-size: 18px;">play_arrow</span></button>
+                </div>
+                <div class="connection-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px;">
+                  <div>
+                    <strong style="font-size: 13px; display: block;">网络连接状态</strong>
+                    <small style="color: var(--text-secondary); font-size: 11px;">netstat -ntlp</small>
+                  </div>
+                  <button class="icon-btn" style="border: 1px solid var(--border-strong); background: var(--control-fill);"><span class="material-symbols-rounded" style="font-size: 18px;">play_arrow</span></button>
+                </div>
+              </div>
             </div>
 
           </aside>
@@ -442,67 +384,31 @@
   <script src="https://cdn.jsdelivr.net/npm/guacamole-common-js@1.5.0/dist/cjs/guacamole-common.min.js"></script>
   <script>
     window.Guacamole = window.Guacamole || window.module.exports;
-    // Clean up temporary CommonJS polyfill to prevent conflicts with Monaco's AMD loader
-    if (window.module) {
-      delete window.module;
-    }
+    if (window.module) { delete window.module; }
   </script>
   <script>
     (function() {
       const cdns = [
-        {
-          loader: 'https://lib.baomitu.com/monaco-editor/0.44.0/min/vs/loader.js',
-          vs: 'https://lib.baomitu.com/monaco-editor/0.44.0/min/vs'
-        },
-        {
-          loader: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.js',
-          vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs'
-        },
-        {
-          loader: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js',
-          vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs'
-        }
+        { loader: 'https://lib.baomitu.com/monaco-editor/0.44.0/min/vs/loader.js', vs: 'https://lib.baomitu.com/monaco-editor/0.44.0/min/vs' },
+        { loader: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.js', vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' },
+        { loader: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js', vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' }
       ];
-
       function tryLoadMonaco(index) {
-        if (index >= cdns.length) {
-          console.error('All Monaco Editor CDNs failed to load.');
-          return;
-        }
+        if (index >= cdns.length) { return; }
         const cdn = cdns[index];
         const script = document.createElement('script');
         script.src = cdn.loader;
-
-        let timeoutId = setTimeout(() => {
-          console.warn('Monaco loader from ' + cdn.loader + ' timed out, trying next fallback...');
-          script.onload = null;
-          script.onerror = null;
-          script.remove();
-          tryLoadMonaco(index + 1);
-        }, 3000); // 3 seconds timeout for Chinese domestic or international failover
-
+        let timeoutId = setTimeout(() => { script.onload = null; script.onerror = null; script.remove(); tryLoadMonaco(index + 1); }, 3000);
         script.onload = () => {
           clearTimeout(timeoutId);
-          if (window.require) {
-            window.require.config({ paths: { 'vs': cdn.vs } });
-            console.log('Monaco Editor loader loaded successfully from: ' + cdn.loader);
-          } else {
-            console.error('Loader script executed but window.require is not defined.');
-            tryLoadMonaco(index + 1);
-          }
+          if (window.require) { window.require.config({ paths: { 'vs': cdn.vs } }); } else { tryLoadMonaco(index + 1); }
         };
-        script.onerror = () => {
-          clearTimeout(timeoutId);
-          console.warn('Failed to load Monaco loader from ' + cdn.loader + ', trying next fallback...');
-          tryLoadMonaco(index + 1);
-        };
+        script.onerror = () => { clearTimeout(timeoutId); tryLoadMonaco(index + 1); };
         document.head.appendChild(script);
       }
       tryLoadMonaco(0);
     })();
   </script>
-  <script src="/assets/js/app.js?v=20260601_fullscreen_fixed"></script>
+  <script src="/assets/js/app.js?v=20260611_ui_refactor"></script>
 </body>
 </html>
-
-
