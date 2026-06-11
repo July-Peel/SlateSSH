@@ -1757,84 +1757,51 @@ button.tab .tab-close:hover { opacity: 1; }
   right: calc(12px + env(safe-area-inset-right, 0px));
 }
 
-.terminal-touch-menu {
+.terminal-copy-viewer {
   position: fixed;
-  z-index: 2200;
-  width: 174px;
+  z-index: 2305;
+  inset: 16px;
   display: grid;
-  gap: 2px;
-  padding: 6px;
+  grid-template-rows: 46px minmax(0, 1fr);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--mica-panel-strong);
-  box-shadow: var(--shadow-16);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: var(--shadow-dialog);
+  overflow: hidden;
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  animation: winuiDialogIn 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.terminal-touch-menu button {
-  justify-content: flex-start;
-  border: 0 !important;
-  background: transparent !important;
-  min-height: 36px;
-}
-.terminal-touch-menu .material-symbols-rounded {
-  font-size: 18px;
-}
-.terminal-selection-toolbar {
-  position: fixed;
-  z-index: 2190;
+.terminal-copy-head {
   display: flex;
-  gap: 4px;
-  width: 156px;
-  padding: 5px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--mica-panel-strong);
-  box-shadow: var(--shadow-16);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--terminal-chrome);
 }
-.terminal-selection-toolbar button {
-  flex: 1;
-  min-height: 32px;
-  padding: 0 8px !important;
+.terminal-copy-head strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.terminal-copy-viewer textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  resize: none;
   border: 0 !important;
-  background: transparent !important;
-}
-.terminal-selection-toolbar .material-symbols-rounded {
-  font-size: 17px;
-}
-.terminal-selection-handle {
-  position: fixed;
-  z-index: 2180;
-  width: 26px;
-  height: 26px;
-  min-width: 26px;
-  min-height: 26px;
-  padding: 0 !important;
-  border-radius: 50% !important;
-  border: 2px solid rgba(255, 255, 255, 0.95) !important;
-  background: var(--accent) !important;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.28) !important;
-  transform: translate(-50%, 2px);
-  touch-action: none;
-}
-.terminal-selection-handle::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: -19px;
-  width: 2px;
-  height: 20px;
-  transform: translateX(-50%);
-  background: var(--accent);
-  border-radius: 999px;
-}
-.terminal-selection-handle.start {
-  transform: translate(-50%, 2px);
-}
-.terminal-selection-handle.end {
-  transform: translate(-50%, 2px);
+  border-radius: 0 !important;
+  border-bottom: 0 !important;
+  padding: 12px !important;
+  background: var(--terminal-bg) !important;
+  color: #e7edf5;
+  font-family: "Cascadia Code", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .terminal-paste-popover {
   position: fixed;
@@ -2241,6 +2208,15 @@ button.tab .tab-close:hover { opacity: 1; }
   }
   .terminal-paste-popover {
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .terminal-copy-viewer {
+    inset: calc(10px + env(safe-area-inset-top, 0px)) 8px calc(64px + env(safe-area-inset-bottom, 0px)) 8px;
+    border-radius: 10px;
+  }
+  .terminal-copy-viewer textarea {
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 10px !important;
   }
   .modal-backdrop {
     padding: 0 !important;

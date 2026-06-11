@@ -135,19 +135,13 @@
                 <span class="material-symbols-rounded" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'"></span>
                 <span class="terminal-fullscreen-label" x-text="isFullscreen ? '退出全屏' : '全屏'"></span>
               </button>
-              <div x-show="terminalTouchMenu.visible" class="terminal-touch-menu" :style="`left:${terminalTouchMenu.x}px;top:${terminalTouchMenu.y}px`" @click.stop>
-                <button @click="selectAllTerminalText()"><span class="material-symbols-rounded">select_all</span>全选</button>
-                <button @click="startTerminalSelectionFromMenu()"><span class="material-symbols-rounded">text_fields</span>选择</button>
-                <button @click="copyTerminalSelection()"><span class="material-symbols-rounded">content_copy</span>复制</button>
-                <button @click="mobileTerminalPaste()"><span class="material-symbols-rounded">content_paste</span>粘贴</button>
-                <button @click="clearActiveTerminal(); hideTerminalTouchMenu()"><span class="material-symbols-rounded">mop</span>清屏</button>
+              <div x-show="terminalCopyViewer.visible" class="terminal-copy-viewer" @click.stop>
+                <div class="terminal-copy-head">
+                  <strong>终端内容</strong>
+                  <button class="icon-btn" @click="closeTerminalCopyViewer()" title="关闭"><span class="material-symbols-rounded">close</span></button>
+                </div>
+                <textarea readonly x-model="terminalCopyViewer.text" spellcheck="false"></textarea>
               </div>
-              <div x-show="terminalSelection.active" class="terminal-selection-toolbar" :style="terminalSelectionToolbarStyle()" @click.stop>
-                <button @click="copyTerminalSelection()"><span class="material-symbols-rounded">content_copy</span>复制</button>
-                <button @click="clearTerminalSelection()"><span class="material-symbols-rounded">close</span>取消</button>
-              </div>
-              <button x-show="terminalSelection.active" class="terminal-selection-handle start" :style="terminalSelectionHandleStyle('start')" @pointerdown.prevent.stop="startTerminalSelectionHandleDrag($event, 'start')" aria-label="选择起点"></button>
-              <button x-show="terminalSelection.active" class="terminal-selection-handle end" :style="terminalSelectionHandleStyle('end')" @pointerdown.prevent.stop="startTerminalSelectionHandleDrag($event, 'end')" aria-label="选择终点"></button>
               <div x-show="terminalPasteBox.visible" class="terminal-paste-popover" @click.stop>
                 <textarea x-model="terminalPasteBox.text" placeholder="命令"></textarea>
                 <div>
