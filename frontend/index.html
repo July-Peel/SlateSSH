@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#ffffff">
-  <title>Swell SSH</title>
+  <title>SlateSSH</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -19,7 +19,7 @@
 <body>
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
     <template x-if="booting">
-      <div class="auth-page"><div class="boot-brand">Swell SSH</div></div>
+      <div class="auth-page"><div class="boot-brand">SlateSSH</div></div>
     </template>
 
     <template x-if="!booting && needsSetup">
@@ -38,7 +38,7 @@
     <template x-if="!booting && !needsSetup && !authenticated">
       <div class="auth-page">
         <form @submit.prevent="login()" class="auth-card">
-          <h1>Swell SSH</h1>
+          <h1>SlateSSH</h1>
           <input x-model="loginForm.username" autocomplete="username" placeholder="用户名">
           <input x-model="loginForm.password" type="password" autocomplete="current-password" placeholder="密码">
           <label class="check-row"><input type="checkbox" x-model="loginForm.rememberMe">记住我</label>
@@ -54,23 +54,18 @@
           <div class="topbar-actions" style="justify-content: flex-start; flex: 1;">
             <button @click="isMobile ? showMobileMenu = !showMobileMenu : showSidebar = !showSidebar" class="icon-btn topbar-shortcut"><span class="material-symbols-rounded">menu</span></button>
             <div class="window-icon" style="margin-left: 4px; color: var(--accent);"><span class="material-symbols-rounded" style="font-size: 20px;">dock_to_right</span></div>
-            <div class="brand" style="margin-left: 6px;">Swell SSH</div>
+            <div class="brand" style="margin-left: 6px;">SlateSSH</div>
           </div>
           <div class="topbar-actions">
             <button @click="showConnectionManager = true" class="topbar-shortcut" style="display:none;"><span class="material-symbols-rounded" style="font-size:18px;">dns</span></button>
             <button @click="toggleFullscreen()" class="topbar-shortcut" x-show="activeSessionId"><span class="material-symbols-rounded" style="font-size:18px;" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'">fullscreen</span></button>
             <div class="user-avatar" x-text="(currentUser?.username || '?')[0]" style="display:none;"></div>
-            <div class="window-controls">
-              <span class="material-symbols-rounded">minimize</span>
-              <span class="material-symbols-rounded">crop_square</span>
-              <span class="material-symbols-rounded">close</span>
-            </div>
           </div>
         </header>
 
         <div class="drawer-overlay" x-show="isMobile && (showMobileSftp || showMobileStatus)" @click="showMobileSftp = false; showMobileStatus = false"></div>
 
-        <main class="main-grid" :style="`grid-template-columns: ${isMobile ? '1fr' : ((showSidebar ? '300px ' : '0px ') + 'minmax(0, 1fr) ' + ((showSftpWidget || showStatusWidget) ? '340px' : '0px'))}`">
+        <main class="main-grid" :style="`grid-template-columns: ${isMobile ? '1fr' : ((showSidebar ? '300px ' : '') + 'minmax(0, 1fr) ' + ((showSftpWidget || showStatusWidget) ? '340px' : ''))}`">
           
           <aside class="connection-panel" x-show="isMobile ? showMobileMenu : showSidebar" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
             <div class="panel-head" style="margin-bottom: 12px;">
@@ -92,7 +87,7 @@
                     <template x-for="connection in group.items" :key="connection.id">
                       <div class="connection-item" :class="activeSessionId === connection.id ? 'active' : ''" @click="openSession(connection)">
                         <div class="item-main">
-                          <span class="item-icon" x-text="connection.name.toLowerCase().includes('ubuntu') ? '🐧' : (connection.name.toLowerCase().includes('debian') ? '🌀' : '🚜')"></span>
+                          <span class="material-symbols-rounded item-icon" x-text="(connection.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'terminal'" style="font-size: 18px; color: var(--accent);"></span>
                           <span class="item-name" x-text="connection.name"></span>
                           <span class="material-symbols-rounded star-icon" :style="connection.name.includes('Mami') ? 'color: #f59e0b' : ''">star</span>
                         </div>
@@ -124,7 +119,7 @@
               <template x-for="tab in sessions" :key="tab.id">
                 <div class="tab-wrapper" :class="activeSessionId === tab.id ? 'active' : ''">
                   <button @click="activateSession(tab.id)" class="tab" :class="activeSessionId === tab.id ? 'active' : ''">
-                    <span class="tab-icon" x-text="tab.name.toLowerCase().includes('ubuntu') ? '🐧' : '🚜'" style="font-size: 14px; margin-right: 4px;"></span>
+                    <span class="material-symbols-rounded tab-icon" x-text="(tab.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'terminal'" style="font-size: 14px; margin-right: 4px;"></span>
                     <span x-text="tab.name"></span>
                     <span class="tab-close" @click.stop="closeTab(tab.id)"><span class="material-symbols-rounded" style="font-size:14px;">close</span></span>
                   </button>
@@ -160,9 +155,7 @@
           <aside class="side-panel" x-show="!isMobile ? (showSftpWidget || showStatusWidget) : true" :class="isMobile ? (showMobileStatus ? 'mobile-drawer right open' : 'mobile-drawer right') : ''">
             <div class="side-tabs top-icons">
               <button class="icon-btn" :class="rightTab === 'files' ? 'active' : ''" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false" title="文件"><span class="material-symbols-rounded">folder</span></button>
-              <button class="icon-btn" :class="rightTab === 'snippets' ? 'active' : ''" @click="rightTab = 'snippets'" title="代码片段"><span class="material-symbols-rounded">data_object</span></button>
-              <button class="icon-btn" :class="rightTab === 'status' ? 'active' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false" title="状态监控"><span class="material-symbols-rounded">schedule</span></button>
-              <button class="icon-btn" title="设置"><span class="material-symbols-rounded">palette</span></button>
+              <button class="icon-btn" :class="rightTab === 'status' ? 'active' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false" title="状态监控"><span class="material-symbols-rounded">speed</span></button>
               <div style="flex:1"></div>
               <button class="icon-btn" x-show="isMobile" @click="showMobileStatus = false"><span class="material-symbols-rounded">close</span></button>
             </div>
@@ -248,26 +241,6 @@
               <template x-if="!activeStatus">
                 <div class="empty" style="padding-top: 40px;">暂无状态</div>
               </template>
-            </div>
-
-            <div x-show="rightTab === 'snippets'" style="display: flex; flex-direction: column; height: 100%;">
-              <button class="primary" style="margin-bottom: 12px;"><span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">add</span> 新建代码片段</button>
-              <div class="connection-list" style="margin: 0;">
-                <div class="connection-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px;">
-                  <div>
-                    <strong style="font-size: 13px; display: block;">系统更新</strong>
-                    <small style="color: var(--text-secondary); font-size: 11px;">sudo apt update && sudo apt upgrade -y</small>
-                  </div>
-                  <button class="icon-btn" style="border: 1px solid var(--border-strong); background: var(--control-fill);"><span class="material-symbols-rounded" style="font-size: 18px;">play_arrow</span></button>
-                </div>
-                <div class="connection-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px;">
-                  <div>
-                    <strong style="font-size: 13px; display: block;">网络连接状态</strong>
-                    <small style="color: var(--text-secondary); font-size: 11px;">netstat -ntlp</small>
-                  </div>
-                  <button class="icon-btn" style="border: 1px solid var(--border-strong); background: var(--control-fill);"><span class="material-symbols-rounded" style="font-size: 18px;">play_arrow</span></button>
-                </div>
-              </div>
             </div>
 
           </aside>

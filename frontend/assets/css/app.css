@@ -1450,3 +1450,19 @@ button.tab .tab-close:hover { opacity: 1; }
 
 /* Ensure right items look nice */
 .connection-list { padding: 0 !important; margin: 0 !important; }
+
+/* Fix Terminal Resizing */
+.terminal-panel {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.terminal-stage {
+  flex: 1 !important;
+  min-height: 0 !important;
+  position: relative !important;
+}
+.terminal-wrap {
+  position: absolute;
+  inset: 0;
+  padding-bottom: 12px;
+}
