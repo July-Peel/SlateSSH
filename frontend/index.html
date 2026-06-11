@@ -136,10 +136,18 @@
                 <span class="terminal-fullscreen-label" x-text="isFullscreen ? '退出全屏' : '全屏'"></span>
               </button>
               <div x-show="terminalTouchMenu.visible" class="terminal-touch-menu" :style="`left:${terminalTouchMenu.x}px;top:${terminalTouchMenu.y}px`" @click.stop>
+                <button @click="selectAllTerminalText()"><span class="material-symbols-rounded">select_all</span>全选</button>
+                <button @click="startTerminalSelectionFromMenu()"><span class="material-symbols-rounded">text_fields</span>选择</button>
                 <button @click="copyTerminalSelection()"><span class="material-symbols-rounded">content_copy</span>复制</button>
                 <button @click="mobileTerminalPaste()"><span class="material-symbols-rounded">content_paste</span>粘贴</button>
                 <button @click="clearActiveTerminal(); hideTerminalTouchMenu()"><span class="material-symbols-rounded">mop</span>清屏</button>
               </div>
+              <div x-show="terminalSelection.active" class="terminal-selection-toolbar" :style="terminalSelectionToolbarStyle()" @click.stop>
+                <button @click="copyTerminalSelection()"><span class="material-symbols-rounded">content_copy</span>复制</button>
+                <button @click="clearTerminalSelection()"><span class="material-symbols-rounded">close</span>取消</button>
+              </div>
+              <button x-show="terminalSelection.active" class="terminal-selection-handle start" :style="terminalSelectionHandleStyle('start')" @pointerdown.prevent.stop="startTerminalSelectionHandleDrag($event, 'start')" aria-label="选择起点"></button>
+              <button x-show="terminalSelection.active" class="terminal-selection-handle end" :style="terminalSelectionHandleStyle('end')" @pointerdown.prevent.stop="startTerminalSelectionHandleDrag($event, 'end')" aria-label="选择终点"></button>
               <div x-show="terminalPasteBox.visible" class="terminal-paste-popover" @click.stop>
                 <textarea x-model="terminalPasteBox.text" placeholder="命令"></textarea>
                 <div>
@@ -166,18 +174,18 @@
             </div>
 
             <div class="terminal-mobile-bar" x-show="isMobile && activeSessionId">
-              <button @click="mobileTerminalCopy()"><span class="material-symbols-rounded">content_copy</span></button>
-              <button @click="mobileTerminalPaste()"><span class="material-symbols-rounded">content_paste</span></button>
-              <button @click="ctrlKeyActive = !ctrlKeyActive" :class="ctrlKeyActive ? 'active' : ''">Ctrl</button>
-              <button @click="sendQuick('\x1b')">Esc</button>
-              <button @click="sendQuick('\x09')">Tab</button>
-              <button @click="sendQuick('\x1b[A')"><span class="material-symbols-rounded">keyboard_arrow_up</span></button>
-              <button @click="sendQuick('\x1b[B')"><span class="material-symbols-rounded">keyboard_arrow_down</span></button>
-              <button @click="sendQuick('\x1b[D')"><span class="material-symbols-rounded">keyboard_arrow_left</span></button>
-              <button @click="sendQuick('\x1b[C')"><span class="material-symbols-rounded">keyboard_arrow_right</span></button>
-              <button @click="sendQuick('/')">/</button>
-              <button @click="sendQuick('-')">-</button>
-              <button @click="sendQuick('|')">|</button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('copy')"><span class="material-symbols-rounded">content_copy</span></button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('paste')"><span class="material-symbols-rounded">content_paste</span></button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('ctrl')" :class="ctrlKeyActive ? 'active' : ''">Ctrl</button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b')">Esc</button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x09')">Tab</button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[A')"><span class="material-symbols-rounded">keyboard_arrow_up</span></button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[B')"><span class="material-symbols-rounded">keyboard_arrow_down</span></button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[D')"><span class="material-symbols-rounded">keyboard_arrow_left</span></button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[C')"><span class="material-symbols-rounded">keyboard_arrow_right</span></button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '/')">/</button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '-')">-</button>
+              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '|')">|</button>
             </div>
             
             <p class="status-line" style="display:none;" :class="testMessageType" x-text="testMessage"></p>
@@ -287,21 +295,30 @@
               </button>
             </div>
             <div class="connection-layout">
-              <div class="connection-list" x-show="!showConnectionForm">
+              <div class="manager-connection-list" x-show="!showConnectionForm">
                 <div class="list-head">
                   <strong>已保存连接</strong>
                   <button @click="newConnection()" class="primary" style="padding: 6px 12px; border-radius: 20px;"><span class="material-symbols-rounded" style="font-size:18px;">add</span> 新增</button>
                 </div>
                 <template x-for="connection in connections" :key="connection.id">
-                  <div class="connection-item">
-                    <div>
-                      <strong x-text="connection.name"></strong>
-                      <small><span class="type-badge" x-text="connection.type || 'SSH'"></span><span x-text="' ' + connection.username + '@' + connection.host + ':' + connection.port"></span></small>
+                  <div class="manager-connection-card">
+                    <div class="manager-card-main">
+                      <div class="manager-card-icon" :class="(connection.type || 'SSH') === 'RDP' ? 'rdp' : 'ssh'">
+                        <span class="material-symbols-rounded" x-text="(connection.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'terminal'"></span>
+                      </div>
+                      <div class="manager-card-text">
+                        <strong x-text="connection.name"></strong>
+                        <small>
+                          <span class="type-badge" x-text="connection.type || 'SSH'"></span>
+                          <span x-text="connection.username + '@' + connection.host + ':' + connection.port"></span>
+                        </small>
+                        <p x-show="connection.notes" x-text="connection.notes"></p>
+                      </div>
                     </div>
-                    <div class="connection-actions">
-                      <button @click="openSession(connection); closeConnectionManager()" x-text="(connection.type || 'SSH') === 'RDP' ? '桌面' : '连接'"></button>
-                      <button @click="testSavedConnection(connection.id)">测试</button>
-                      <button @click="editConnection(connection)">编辑</button>
+                    <div class="manager-card-actions">
+                      <button class="primary" @click="openSession(connection); closeConnectionManager()"><span class="material-symbols-rounded" x-text="(connection.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'login'"></span><span x-text="(connection.type || 'SSH') === 'RDP' ? '桌面' : '连接'"></span></button>
+                      <button @click="testSavedConnection(connection.id)"><span class="material-symbols-rounded">network_check</span>测试</button>
+                      <button @click="editConnection(connection)"><span class="material-symbols-rounded">edit</span>编辑</button>
                       <button class="danger-text icon-btn" @click="deleteConnection(connection.id)" title="删除"><span class="material-symbols-rounded" style="font-size:18px;">delete</span></button>
                     </div>
                   </div>

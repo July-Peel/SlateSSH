@@ -47,6 +47,15 @@ function shadowApp() {
     pendingPasteTarget: null,
     terminalTouchMenu: { visible: false, x: 0, y: 0 },
     terminalPasteBox: { visible: false, text: '' },
+    terminalSelection: {
+      active: false,
+      sessionId: null,
+      start: null,
+      end: null,
+      handles: { start: null, end: null },
+      dragging: null,
+      menuCell: null
+    },
     editorWindow: {
       x: 420,
       y: 90,
@@ -287,10 +296,12 @@ function shadowApp() {
       document.addEventListener('pointermove', (event) => {
         this.dragEditor(event);
         this.resizeEditor(event);
+        this.dragTerminalSelectionHandle(event);
       });
       document.addEventListener('pointerup', () => {
         this.stopEditorDrag();
         this.stopEditorResize();
+        this.stopTerminalSelectionHandleDrag();
       });
 
       // Fullscreen listener removed per user request (fallback to CSS fullscreen)
@@ -740,6 +751,7 @@ function shadowApp() {
         this.isFullscreen = false;
         document.body.classList.remove('terminal-web-fullscreen');
       }
+      if (this.terminalSelection.sessionId === id) this.clearTerminalSelection();
       this.hideTerminalTouchMenu();
     },
 
@@ -800,6 +812,11 @@ function shadowApp() {
         }
         this.sendSocket({ type: 'ssh:input', sessionId: id, payload: { data: payloadData } });
       });
+      term.textarea?.addEventListener('blur', () => {
+        if (!this.isMobile || !this.activeSessionId || this.terminalPasteBox.visible || this.terminalSelection.active) return;
+        clearTimeout(this._terminalFocusTimer);
+        this._terminalFocusTimer = setTimeout(() => this.refocusTerminal(true), 40);
+      });
       const copySelection = async () => {
         const text = term.getSelection();
         if (!text) return;
@@ -837,7 +854,8 @@ function shadowApp() {
           clearTimeout(longPressTimer);
           longPressTimer = setTimeout(() => {
             longPressed = true;
-            this.showTerminalTouchMenu(touch.clientX, touch.clientY);
+            const cell = this.getTerminalCellFromPoint(id, touch.clientX, touch.clientY);
+            this.showTerminalTouchMenu(touch.clientX, touch.clientY, cell);
           }, 520);
         }, { passive: true });
 
@@ -915,6 +933,9 @@ function shadowApp() {
       const term = this.terminals[this.activeSessionId];
       let value = term?.getSelection?.();
       let copiedVisible = false;
+      if (!value && this.terminalSelection.active) {
+        value = this.getTerminalSelectedTextFromState();
+      }
       if (!value && this.isMobile) {
         value = this.getTerminalVisibleText(this.activeSessionId);
         copiedVisible = !!value;
@@ -949,6 +970,23 @@ function shadowApp() {
       }
     },
 
+    getTerminalSelectedTextFromState() {
+      const id = this.terminalSelection.sessionId || this.activeSessionId;
+      const term = this.terminals[id];
+      const buffer = term?.buffer?.active;
+      const metrics = this.getTerminalMetrics(id);
+      const normalized = this.normalizeTerminalSelection();
+      if (!buffer || !metrics || !normalized) return '';
+      const lines = [];
+      for (let row = normalized.start.row; row <= normalized.end.row; row++) {
+        const raw = buffer.getLine(row)?.translateToString(true) || '';
+        const startCol = row === normalized.start.row ? normalized.start.col : 0;
+        const endCol = row === normalized.end.row ? normalized.end.col + 1 : metrics.cols;
+        lines.push(raw.slice(startCol, endCol));
+      }
+      return lines.join('\n').trim();
+    },
+
     getTerminalVisibleText(id = this.activeSessionId) {
       const term = this.terminals[id];
       const buffer = term?.buffer?.active;
@@ -963,11 +1001,161 @@ function shadowApp() {
       return lines.join('\n').trim();
     },
 
-    showTerminalTouchMenu(x, y) {
-      const width = 168;
-      const height = 132;
+    getTerminalMetrics(id = this.activeSessionId) {
+      const term = this.terminals[id];
+      const surface = document.getElementById(`terminal-${id}`);
+      const screen = surface?.querySelector('.xterm-screen') || surface;
+      if (!term || !screen) return null;
+      const rect = screen.getBoundingClientRect();
+      const cols = Math.max(1, term.cols || 1);
+      const rows = Math.max(1, term.rows || 1);
+      return {
+        rect,
+        cols,
+        rows,
+        cellWidth: rect.width / cols,
+        cellHeight: rect.height / rows,
+        viewportY: term.buffer?.active?.viewportY || 0
+      };
+    },
+
+    getTerminalCellFromPoint(id, x, y) {
+      const metrics = this.getTerminalMetrics(id);
+      if (!metrics) return null;
+      const visibleCol = Math.min(metrics.cols - 1, Math.max(0, Math.floor((x - metrics.rect.left) / metrics.cellWidth)));
+      const visibleRow = Math.min(metrics.rows - 1, Math.max(0, Math.floor((y - metrics.rect.top) / metrics.cellHeight)));
+      return { col: visibleCol, row: metrics.viewportY + visibleRow };
+    },
+
+    getTerminalPointForCell(id, cell, atEnd = false) {
+      const metrics = this.getTerminalMetrics(id);
+      if (!metrics || !cell) return { x: -9999, y: -9999 };
+      const visibleRow = cell.row - metrics.viewportY;
+      const col = Math.min(metrics.cols, Math.max(0, cell.col + (atEnd ? 1 : 0)));
+      const row = Math.min(metrics.rows - 1, Math.max(0, visibleRow));
+      return {
+        x: metrics.rect.left + col * metrics.cellWidth,
+        y: metrics.rect.top + (row + 1) * metrics.cellHeight
+      };
+    },
+
+    normalizeTerminalSelection() {
+      const start = this.terminalSelection.start;
+      const end = this.terminalSelection.end;
+      if (!start || !end) return null;
+      const a = { col: start.col, row: start.row };
+      const b = { col: end.col, row: end.row };
+      if (a.row > b.row || (a.row === b.row && a.col > b.col)) {
+        return { start: b, end: a };
+      }
+      return { start: a, end: b };
+    },
+
+    terminalSelectionLength(start, end, cols) {
+      if (!start || !end) return 0;
+      if (start.row === end.row) return Math.max(1, end.col - start.col + 1);
+      return Math.max(1, (cols - start.col) + Math.max(0, end.row - start.row - 1) * cols + end.col + 1);
+    },
+
+    applyTerminalSelection() {
+      const term = this.terminals[this.terminalSelection.sessionId || this.activeSessionId];
+      const metrics = this.getTerminalMetrics(this.terminalSelection.sessionId || this.activeSessionId);
+      const normalized = this.normalizeTerminalSelection();
+      if (!term || !metrics || !normalized) return;
+      const length = this.terminalSelectionLength(normalized.start, normalized.end, metrics.cols);
+      term.select?.(normalized.start.col, normalized.start.row, length);
+    },
+
+    startTerminalSelectionFromMenu() {
+      const id = this.activeSessionId;
+      const term = this.terminals[id];
+      const metrics = this.getTerminalMetrics(id);
+      if (!id || !term || !metrics) return;
+      const cell = this.terminalSelection.menuCell || {
+        col: Math.floor(metrics.cols / 4),
+        row: metrics.viewportY + Math.floor(metrics.rows / 2)
+      };
+      const row = Math.min(metrics.viewportY + metrics.rows - 1, Math.max(metrics.viewportY, cell.row));
+      this.terminalSelection.active = true;
+      this.terminalSelection.sessionId = id;
+      this.terminalSelection.start = { col: Math.max(0, cell.col - 1), row };
+      this.terminalSelection.end = { col: Math.min(metrics.cols - 1, cell.col + 8), row };
+      this.terminalSelection.dragging = null;
+      this.hideTerminalTouchMenu();
+      this.applyTerminalSelection();
+    },
+
+    selectAllTerminalText() {
+      const term = this.terminals[this.activeSessionId];
+      const metrics = this.getTerminalMetrics(this.activeSessionId);
+      if (!term || !metrics) return;
+      term.selectAll?.();
+      const buffer = term.buffer?.active;
+      const startRow = Math.max(0, buffer?.baseY || 0);
+      const endRow = Math.max(startRow, (buffer?.baseY || 0) + metrics.rows - 1);
+      this.terminalSelection.active = true;
+      this.terminalSelection.sessionId = this.activeSessionId;
+      this.terminalSelection.start = { col: 0, row: startRow };
+      this.terminalSelection.end = { col: Math.max(0, metrics.cols - 1), row: endRow };
+      this.hideTerminalTouchMenu();
+    },
+
+    clearTerminalSelection() {
+      const term = this.terminals[this.terminalSelection.sessionId || this.activeSessionId];
+      term?.clearSelection?.();
+      this.terminalSelection.active = false;
+      this.terminalSelection.sessionId = null;
+      this.terminalSelection.start = null;
+      this.terminalSelection.end = null;
+      this.terminalSelection.dragging = null;
+      this.terminalSelection.menuCell = null;
+      this.refocusTerminal(true);
+    },
+
+    terminalSelectionHandleStyle(which) {
+      const id = this.terminalSelection.sessionId || this.activeSessionId;
+      const point = this.getTerminalPointForCell(id, this.terminalSelection[which], which === 'end');
+      return `left:${Math.round(point.x)}px;top:${Math.round(point.y)}px`;
+    },
+
+    terminalSelectionToolbarStyle() {
+      const id = this.terminalSelection.sessionId || this.activeSessionId;
+      const normalized = this.normalizeTerminalSelection();
+      const point = this.getTerminalPointForCell(id, normalized?.start, false);
+      const width = 156;
+      const x = Math.min(Math.max(8, point.x), Math.max(8, window.innerWidth - width - 8));
+      const y = Math.max(8, point.y - 58);
+      return `left:${Math.round(x)}px;top:${Math.round(y)}px`;
+    },
+
+    startTerminalSelectionHandleDrag(event, which) {
+      this.terminalSelection.dragging = which;
+      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
+    },
+
+    dragTerminalSelectionHandle(event) {
+      const which = this.terminalSelection.dragging;
+      if (!which) return;
+      const id = this.terminalSelection.sessionId || this.activeSessionId;
+      const cell = this.getTerminalCellFromPoint(id, event.clientX, event.clientY);
+      if (!cell) return;
+      const metrics = this.getTerminalMetrics(id);
+      if (!metrics) return;
+      cell.col = Math.min(metrics.cols - 1, Math.max(0, cell.col));
+      this.terminalSelection[which] = cell;
+      this.applyTerminalSelection();
+    },
+
+    stopTerminalSelectionHandleDrag() {
+      this.terminalSelection.dragging = null;
+    },
+
+    showTerminalTouchMenu(x, y, cell = null) {
+      const width = 174;
+      const height = 202;
       this.terminalTouchMenu.x = Math.min(Math.max(8, x - width / 2), Math.max(8, window.innerWidth - width - 8));
       this.terminalTouchMenu.y = Math.min(Math.max(8, y - height - 12), Math.max(8, window.innerHeight - height - 8));
+      this.terminalSelection.menuCell = cell;
       this.terminalTouchMenu.visible = true;
     },
 
@@ -1614,9 +1802,28 @@ function shadowApp() {
     },
 
     // Re-focus terminal after mobile keyboard button taps to keep iOS keyboard open
-    refocusTerminal() {
-      if (this.isMobile && this.activeSessionId && this.terminals[this.activeSessionId] && !this.terminalPasteBox.visible) {
-        setTimeout(() => this.terminals[this.activeSessionId]?.focus(), 10);
+    refocusTerminal(force = false) {
+      if (!this.isMobile || !this.activeSessionId || !this.terminals[this.activeSessionId] || this.terminalPasteBox.visible) return;
+      const focus = () => {
+        try { this.terminals[this.activeSessionId]?.focus(); } catch (_) {}
+      };
+      if (force) focus();
+      requestAnimationFrame(focus);
+      setTimeout(focus, 20);
+      setTimeout(focus, 90);
+    },
+
+    terminalMobileButton(action, payload = '') {
+      this.refocusTerminal(true);
+      if (action === 'copy') {
+        this.mobileTerminalCopy();
+      } else if (action === 'paste') {
+        this.mobileTerminalPaste();
+      } else if (action === 'ctrl') {
+        this.ctrlKeyActive = !this.ctrlKeyActive;
+        this.refocusTerminal(true);
+      } else if (action === 'quick') {
+        this.sendQuick(payload);
       }
     },
 
@@ -1626,7 +1833,7 @@ function shadowApp() {
         const text = await navigator.clipboard.readText();
         if (text) {
           await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: text } });
-          this.refocusTerminal();
+          this.refocusTerminal(true);
           this.hideTerminalTouchMenu();
           return;
         }
@@ -1653,7 +1860,7 @@ function shadowApp() {
         await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: command } });
       }
       // Keep keyboard open on mobile after shortcut key taps
-      this.refocusTerminal();
+      this.refocusTerminal(true);
     },
 
     percent(value) {
