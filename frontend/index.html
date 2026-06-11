@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260611_ui_refactor">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260611_winui_mobile">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
@@ -58,18 +58,18 @@
           </div>
           <div class="topbar-actions">
             <button @click="showConnectionManager = true" class="topbar-shortcut" style="display:none;"><span class="material-symbols-rounded" style="font-size:18px;">dns</span></button>
-            <button @click="toggleFullscreen()" class="topbar-shortcut" x-show="activeSessionId"><span class="material-symbols-rounded" style="font-size:18px;" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'">fullscreen</span></button>
             <div class="user-avatar" x-text="(currentUser?.username || '?')[0]" style="display:none;"></div>
           </div>
         </header>
 
-        <div class="drawer-overlay" x-show="isMobile && (showMobileSftp || showMobileStatus)" @click="showMobileSftp = false; showMobileStatus = false"></div>
+        <div class="drawer-overlay" x-show="isMobile && (showMobileMenu || showMobileSftp || showMobileStatus)" @click="showMobileMenu = false; showMobileSftp = false; showMobileStatus = false"></div>
 
         <main class="main-grid" :style="`grid-template-columns: ${isMobile ? '1fr' : ((showSidebar ? '300px ' : '') + 'minmax(0, 1fr) ' + ((showSftpWidget || showStatusWidget) ? '340px' : ''))}`">
           
           <aside class="connection-panel" x-show="isMobile ? showMobileMenu : showSidebar" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
-            <div class="panel-head" style="margin-bottom: 12px;">
+            <div class="panel-head connection-panel-head" style="margin-bottom: 12px;">
               <h2 style="font-size: 18px; font-weight: 500;">SSH 连接</h2>
+              <button class="icon-btn panel-add-btn" @click="newConnection()" title="新建连接"><span class="material-symbols-rounded">add</span></button>
               <div class="path-input-wrapper" style="margin-top: 12px; position: relative;">
                 <input x-model="commandInput" placeholder="快速连接 user@host:port" class="path-input" @keydown.enter="sendCommandInput()">
                 <button @click="sendCommandInput()" class="path-go-btn" title="连接" style="position: absolute; right: 4px;"><span class="material-symbols-rounded" style="font-size: 18px;">play_arrow</span></button>
@@ -77,40 +77,29 @@
             </div>
             
             <div class="connection-list" style="overflow-y: auto; flex: 1; padding-bottom: 12px; margin: -8px; padding: 8px;">
-              <template x-for="group in groupedConnections" :key="group.name">
-                <div class="connection-group">
-                  <div class="group-header" @click="toggleGroup(group.name)">
-                    <span class="material-symbols-rounded group-chevron" :style="collapsedGroups.includes(group.name) ? 'transform: rotate(-90deg)' : ''">expand_more</span>
-                    <span class="group-name" x-text="group.name"></span>
+              <template x-for="connection in connections" :key="connection.id">
+                <div class="connection-item" :class="isConnectionActive(connection) ? 'active' : ''" @click="openSession(connection)">
+                  <div class="connection-content">
+                    <div class="item-main">
+                      <span class="connection-state" :class="isConnectionActive(connection) ? 'online' : ''"></span>
+                      <span class="material-symbols-rounded item-icon" x-text="(connection.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'terminal'" style="font-size: 18px; color: var(--accent);"></span>
+                      <span class="item-name" x-text="connection.name"></span>
+                    </div>
+                    <div class="item-sub">
+                      <span class="type-badge" x-text="connection.type || 'SSH'"></span>
+                      <span x-text="connection.username + '@' + connection.host.replace(/[0-9]/g, '*') + ':' + connection.port"></span>
+                    </div>
                   </div>
-                  <div class="group-items" x-show="!collapsedGroups.includes(group.name)">
-                    <template x-for="connection in group.items" :key="connection.id">
-                      <div class="connection-item" :class="activeSessionId === connection.id ? 'active' : ''" @click="openSession(connection)">
-                        <div class="item-main">
-                          <span class="material-symbols-rounded item-icon" x-text="(connection.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'terminal'" style="font-size: 18px; color: var(--accent);"></span>
-                          <span class="item-name" x-text="connection.name"></span>
-                          <span class="material-symbols-rounded star-icon" :style="connection.name.includes('Mami') ? 'color: #f59e0b' : ''">star</span>
-                        </div>
-                        <div class="item-sub">
-                          <span x-text="connection.username + '@' + connection.host.replace(/[0-9]/g, '*') + ':' + connection.port"></span>
-                        </div>
-                        <button class="icon-btn hide-icon" @click.stop="editConnection(connection); showConnectionManager = true;" title="编辑"><span class="material-symbols-rounded" style="font-size:16px;">visibility_off</span></button>
-                      </div>
-                    </template>
-                  </div>
+                  <button class="icon-btn hide-icon" @click.stop="editConnection(connection); showConnectionManager = true;" title="编辑"><span class="material-symbols-rounded" style="font-size:16px;">edit</span></button>
                 </div>
               </template>
               <div class="empty" x-show="!connections.length" style="padding-top: 24px;">暂无已保存的连接</div>
             </div>
 
-            <div class="panel-footer" style="margin-top: auto; padding-top: 16px; display: flex; gap: 8px; align-items: center;">
-              <button class="primary" style="flex: 1; justify-content: center; padding: 8px; font-weight: 500;" @click="editConnection(null); showConnectionManager = true;">
-                <span class="material-symbols-rounded">add</span> 新建连接
-              </button>
-              <button class="icon-btn" style="background: var(--control-fill); border: 1px solid var(--border-strong);" @click="editConnection(connections[0] || null); showConnectionManager = true;" title="编辑"><span class="material-symbols-rounded" style="font-size: 18px;">edit</span></button>
-              <button class="icon-btn" style="background: var(--control-fill); border: 1px solid var(--border-strong);" @click="showConnectionManager = true;" title="删除"><span class="material-symbols-rounded" style="font-size: 18px;">delete</span></button>
-              <button class="icon-btn" style="background: var(--control-fill); border: 1px solid var(--border-strong);" @click="showConnectionManager = true;" title="管理"><span class="material-symbols-rounded" style="font-size: 18px;">settings</span></button>
-              <button class="icon-btn" style="background: var(--control-fill); border: 1px solid var(--border-strong);" @click="toggleTheme()" :title="theme === 'dark' ? '白天模式' : '夜间模式'"><span class="material-symbols-rounded" style="font-size: 18px;" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'"></span></button>
+            <div class="panel-footer command-strip" style="margin-top: auto; padding-top: 16px; display: flex; gap: 8px; align-items: center;">
+              <button class="icon-btn" @click="newConnection()" title="新建连接"><span class="material-symbols-rounded" style="font-size: 18px;">add</span></button>
+              <button class="icon-btn" @click="showConnectionManager = true" title="连接管理"><span class="material-symbols-rounded" style="font-size: 18px;">dns</span></button>
+              <button class="icon-btn" @click="toggleTheme()" :title="theme === 'dark' ? '白天模式' : '夜间模式'"><span class="material-symbols-rounded" style="font-size: 18px;" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'"></span></button>
             </div>
           </aside>
 
@@ -129,8 +118,35 @@
               <div class="tab-empty" x-show="!sessions.length" style="padding: 4px 12px;">暂无活动会话</div>
             </div>
 
+            <div class="terminal-commandbar" x-show="activeSessionId">
+              <button class="icon-btn" @click="copyTerminalSelection()" title="复制"><span class="material-symbols-rounded">content_copy</span></button>
+              <button class="icon-btn" @click="mobileTerminalPaste()" title="粘贴"><span class="material-symbols-rounded">content_paste</span></button>
+              <button class="icon-btn" @click="clearActiveTerminal()" title="清屏"><span class="material-symbols-rounded">mop</span></button>
+              <div class="terminal-search-box">
+                <span class="material-symbols-rounded">search</span>
+                <input x-model="terminalSearch" @keydown.enter="searchTerminal()" placeholder="查找">
+              </div>
+              <button class="icon-btn" @click="findPreviousTerminalResult()" title="上一个"><span class="material-symbols-rounded">keyboard_arrow_up</span></button>
+              <button class="icon-btn" @click="findNextTerminalResult()" title="下一个"><span class="material-symbols-rounded">keyboard_arrow_down</span></button>
+            </div>
+
             <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
-              <button x-show="isFullscreen" @click="toggleFullscreen()" class="close-fullscreen-btn">退出全屏</button>
+              <button x-show="activeSessionId" @click="toggleFullscreen()" class="terminal-fullscreen-btn" :title="isFullscreen ? '退出全屏' : '全屏'">
+                <span class="material-symbols-rounded" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'"></span>
+                <span class="terminal-fullscreen-label" x-text="isFullscreen ? '退出全屏' : '全屏'"></span>
+              </button>
+              <div x-show="terminalTouchMenu.visible" class="terminal-touch-menu" :style="`left:${terminalTouchMenu.x}px;top:${terminalTouchMenu.y}px`" @click.stop>
+                <button @click="copyTerminalSelection()"><span class="material-symbols-rounded">content_copy</span>复制</button>
+                <button @click="mobileTerminalPaste()"><span class="material-symbols-rounded">content_paste</span>粘贴</button>
+                <button @click="clearActiveTerminal(); hideTerminalTouchMenu()"><span class="material-symbols-rounded">mop</span>清屏</button>
+              </div>
+              <div x-show="terminalPasteBox.visible" class="terminal-paste-popover" @click.stop>
+                <textarea x-model="terminalPasteBox.text" placeholder="命令"></textarea>
+                <div>
+                  <button @click="terminalPasteBox.visible = false">取消</button>
+                  <button class="primary" @click="sendTerminalPasteText()">发送</button>
+                </div>
+              </div>
               <template x-for="tab in sessions" :key="tab.id + '-terminal'">
                 <div x-show="activeSessionId === tab.id" class="terminal-wrap">
                   <template x-if="tab.type === 'RDP'">
@@ -147,6 +163,21 @@
                   <div class="empty-text">点击右上角「连接」或右下角菜单，选择一个 SSH / RDP 连接开始</div>
                 </div>
               </template>
+            </div>
+
+            <div class="terminal-mobile-bar" x-show="isMobile && activeSessionId">
+              <button @click="mobileTerminalCopy()"><span class="material-symbols-rounded">content_copy</span></button>
+              <button @click="mobileTerminalPaste()"><span class="material-symbols-rounded">content_paste</span></button>
+              <button @click="ctrlKeyActive = !ctrlKeyActive" :class="ctrlKeyActive ? 'active' : ''">Ctrl</button>
+              <button @click="sendQuick('\x1b')">Esc</button>
+              <button @click="sendQuick('\x09')">Tab</button>
+              <button @click="sendQuick('\x1b[A')"><span class="material-symbols-rounded">keyboard_arrow_up</span></button>
+              <button @click="sendQuick('\x1b[B')"><span class="material-symbols-rounded">keyboard_arrow_down</span></button>
+              <button @click="sendQuick('\x1b[D')"><span class="material-symbols-rounded">keyboard_arrow_left</span></button>
+              <button @click="sendQuick('\x1b[C')"><span class="material-symbols-rounded">keyboard_arrow_right</span></button>
+              <button @click="sendQuick('/')">/</button>
+              <button @click="sendQuick('-')">-</button>
+              <button @click="sendQuick('|')">|</button>
             </div>
             
             <p class="status-line" style="display:none;" :class="testMessageType" x-text="testMessage"></p>
@@ -319,23 +350,39 @@
           </div>
         </div>
 
-        <div x-show="activeEditorTab" class="editor-window" :style="`left:${editorWindow.x}px;top:${editorWindow.y}px;width:${editorWindow.width}px;height:${editorWindow.height}px`">
-          <div class="editor-head" @mousedown="startEditorDrag($event)">
-            <div>
-              <strong x-text="activeEditorTab?.name || ''"></strong>
-              <small x-text="activeEditorTab?.path || ''"></small>
+        <div x-show="activeEditorTab" class="editor-backdrop" :class="editorWindow.minimized ? 'is-minimized' : ''">
+          <div class="editor-window" :class="{ maximized: editorWindow.maximized, minimized: editorWindow.minimized, resizing: editorWindow.resizing }" :style="editorWindowStyle()">
+            <div class="editor-head" @pointerdown="startEditorDrag($event)" @dblclick="toggleEditorMaximize()">
+              <div class="editor-title">
+                <strong x-text="activeEditorTab?.name || ''"></strong>
+                <small x-text="activeEditorTab?.path || ''"></small>
+              </div>
+              <div class="editor-actions">
+                <button class="icon-btn" @click.stop="saveEditor()" title="保存"><span class="material-symbols-rounded">save</span></button>
+                <button class="icon-btn" @click.stop="minimizeEditor()" title="最小化"><span class="material-symbols-rounded">minimize</span></button>
+                <button class="icon-btn" @click.stop="toggleEditorMaximize()" :title="editorWindow.maximized ? '还原' : '最大化'"><span class="material-symbols-rounded" x-text="editorWindow.maximized ? 'filter_none' : 'crop_square'"></span></button>
+                <button class="icon-btn" @click.stop="closeEditorTab(activeEditorTabId)" title="关闭"><span class="material-symbols-rounded">close</span></button>
+              </div>
             </div>
-            <div>
-              <button @click="saveEditor()">保存</button>
-              <button @click="closeEditorTab(activeEditorTabId)">关闭</button>
-            </div>
+            <template x-if="activeEditorTab">
+              <div class="editor-body" x-show="!editorWindow.minimized">
+                <textarea class="editor-textarea" :class="monacoReady ? 'hidden-editor' : ''" x-model="activeEditorTab.content"></textarea>
+                <div id="monaco-editor-container" class="monaco-editor-container" :class="monacoReady ? '' : 'hidden-editor'" x-init="$nextTick(() => initMonacoEditor())" x-effect="updateMonacoEditor()"></div>
+              </div>
+            </template>
+            <template x-if="!editorWindow.minimized && !editorWindow.maximized">
+              <div class="editor-resize-handles">
+                <span class="resize-handle n" @pointerdown.prevent="startEditorResize($event, 'n')"></span>
+                <span class="resize-handle e" @pointerdown.prevent="startEditorResize($event, 'e')"></span>
+                <span class="resize-handle s" @pointerdown.prevent="startEditorResize($event, 's')"></span>
+                <span class="resize-handle w" @pointerdown.prevent="startEditorResize($event, 'w')"></span>
+                <span class="resize-handle ne" @pointerdown.prevent="startEditorResize($event, 'ne')"></span>
+                <span class="resize-handle nw" @pointerdown.prevent="startEditorResize($event, 'nw')"></span>
+                <span class="resize-handle se" @pointerdown.prevent="startEditorResize($event, 'se')"></span>
+                <span class="resize-handle sw" @pointerdown.prevent="startEditorResize($event, 'sw')"></span>
+              </div>
+            </template>
           </div>
-          <template x-if="activeEditorTab">
-            <div class="editor-body">
-              <textarea class="editor-textarea" :class="monacoReady ? 'hidden-editor' : ''" x-model="activeEditorTab.content"></textarea>
-              <div id="monaco-editor-container" class="monaco-editor-container" :class="monacoReady ? '' : 'hidden-editor'" x-init="$nextTick(() => initMonacoEditor())" x-effect="updateMonacoEditor()"></div>
-            </div>
-          </template>
         </div>
 
         <div x-show="contextMenu.visible" :style="`left:${contextMenu.x}px;top:${contextMenu.y}px`" class="context-menu" @click.stop>
@@ -382,6 +429,6 @@
       tryLoadMonaco(0);
     })();
   </script>
-  <script src="/assets/js/app.js?v=20260611_ui_refactor"></script>
+  <script src="/assets/js/app.js?v=20260611_winui_mobile"></script>
 </body>
 </html>
