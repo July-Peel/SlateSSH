@@ -368,8 +368,10 @@ function shadowApp() {
     async refreshConnections() {
       const resp = await fetch('/api/v1/connections');
       if (!resp.ok) return;
-      this.connections = await resp.json();
+      const data = await resp.json();
+      this.connections = data.map(c => ({ ...c, connecting: false }));
     },
+
 
     newConnection(type = 'SSH') {
       this.connectionForm = { id: null, name: '', type, host: '', port: type === 'RDP' ? 3389 : 22, username: type === 'RDP' ? '' : 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' };
@@ -506,6 +508,13 @@ function shadowApp() {
       if (message.type === 'error') {
         this.testMessage = message.payload?.message || '操作失败';
         this.testMessageType = 'error';
+        const connId = Number(message.payload?.connectionId);
+        if (connId) {
+          const connection = this.connections.find(c => c.id === connId);
+          if (connection) connection.connecting = false;
+        } else {
+          this.connections.forEach(c => c.connecting = false);
+        }
       }
       if (message.type === 'status_update') {
         this.statuses = { ...this.statuses, [message.sessionId]: message.payload || {} };
@@ -524,6 +533,11 @@ function shadowApp() {
         };
         const existing = this.sessions.find(x => x.id === tab.id);
         if (!existing) this.sessions.push(tab); else existing.connected = true;
+        const connId = Number(message.payload.connectionId);
+        const connection = this.connections.find(c => c.id === connId);
+        if (connection) {
+          connection.connecting = false;
+        }
         this.activeSessionId = tab.id;
         this.activePath = '.';
         this.files = [];
@@ -552,7 +566,11 @@ function shadowApp() {
         const autoCloseTab = !!message.payload?.autoCloseTab;
         const term = this.terminals[message.sessionId];
         const tab = this.sessions.find(x => x.id === message.sessionId);
-        if (tab) tab.connected = false;
+        if (tab) {
+          tab.connected = false;
+          const connection = this.connections.find(c => c.id === tab.connectionId);
+          if (connection) connection.connecting = false;
+        }
         if (term) term.writeln(`\r\n[${reason}]`);
         if (autoCloseTab) this.closeTab(message.sessionId, false);
       }
@@ -605,6 +623,7 @@ function shadowApp() {
         await this.openRdpSession(connection);
         return;
       }
+      connection.connecting = true;
       this.testMessage = `正在连接 ${connection.name || connection.host}...`;
       this.testMessageType = 'info';
       await this.sendSocket({ type: 'ssh:connect', payload: { connectionId: connection.id } });
@@ -621,6 +640,7 @@ function shadowApp() {
         this.activateSession(existing.id);
         return;
       }
+      connection.connecting = true;
       const id = crypto.randomUUID();
       const tab = { id, connectionId: connection.id, name: connection.name || connection.host || 'RDP', type: 'RDP', connected: false };
       this.sessions.push(tab);
@@ -632,6 +652,7 @@ function shadowApp() {
       await new Promise(resolve => this.$nextTick(resolve));
       const el = document.getElementById(`rdp-${id}`);
       if (!el) {
+        connection.connecting = false;
         this.testMessage = 'RDP 显示区域未初始化。';
         this.testMessageType = 'error';
         return;
@@ -652,12 +673,14 @@ function shadowApp() {
       client.onstatechange = (state) => {
         tab.connected = state === Guacamole.Client.State.CONNECTED || state === Guacamole.Client.State.WAITING;
         if (state === Guacamole.Client.State.CONNECTED) {
+          connection.connecting = false;
           this.testMessage = `RDP 桌面已连接：${tab.name}`;
           this.testMessageType = 'success';
           setTimeout(() => this.fitRdp(id), 50);
         }
         if (state === Guacamole.Client.State.DISCONNECTED) {
           tab.connected = false;
+          connection.connecting = false;
           if (this.activeSessionId === id && this.testMessageType !== 'error') {
             this.testMessage = `RDP 桌面已断开：${tab.name}`;
             this.testMessageType = 'error';
@@ -666,6 +689,7 @@ function shadowApp() {
       };
       client.onerror = (status) => {
         tab.connected = false;
+        connection.connecting = false;
         this.testMessage = status?.message || 'RDP 连接失败。';
         this.testMessageType = 'error';
       };
@@ -705,7 +729,12 @@ function shadowApp() {
 
     closeTab(id, notify = true) {
       const idx = this.sessions.findIndex(x => x.id === id);
-      if (idx >= 0) this.sessions.splice(idx, 1);
+      if (idx >= 0) {
+        const tab = this.sessions[idx];
+        const connection = this.connections.find(c => c.id === tab.connectionId);
+        if (connection) connection.connecting = false;
+        this.sessions.splice(idx, 1);
+      }
       if (notify && this.socket?.readyState === WebSocket.OPEN && this.terminals[id]) {
         this.socket.send(JSON.stringify({ type: 'ssh:disconnect', sessionId: id }));
       }

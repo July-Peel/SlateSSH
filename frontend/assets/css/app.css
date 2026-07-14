@@ -2291,3 +2291,19 @@ button.tab .tab-close:hover { opacity: 1; }
     min-height: 18px;
   }
 }
+
+/* Custom Spin Animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+/* Custom layout fixes for Side Panel scrolling */
+.side-panel {
+  min-height: 0 !important;
+}
+

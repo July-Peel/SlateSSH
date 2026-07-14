@@ -82,7 +82,7 @@
                   <div class="connection-content">
                     <div class="item-main">
                       <span class="connection-state" :class="isConnectionActive(connection) ? 'online' : ''"></span>
-                      <span class="material-symbols-rounded item-icon" x-text="(connection.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'terminal'" style="font-size: 18px; color: var(--accent);"></span>
+                      <span class="material-symbols-rounded item-icon" :class="connection.connecting ? 'spin' : ''" x-text="connection.connecting ? 'progress_activity' : ((connection.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'terminal')" style="font-size: 18px; color: var(--accent);"></span>
                       <span class="item-name" x-text="connection.name"></span>
                     </div>
                     <div class="item-sub">
@@ -193,7 +193,7 @@
               <button class="icon-btn" x-show="isMobile" @click="showMobileStatus = false"><span class="material-symbols-rounded">close</span></button>
             </div>
 
-            <div x-show="rightTab === 'files'" style="display: flex; flex-direction: column; height: 100%;">
+            <div x-show="rightTab === 'files'" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
               <div class="panel-head" style="display:none;">
                 <h2>SFTP 文件</h2>
               </div>
@@ -215,7 +215,7 @@
                 <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
               </div>
               
-              <div class="file-list" style="margin-top: 12px; background: transparent;">
+              <div class="file-list" style="margin-top: 12px; background: transparent; overflow-y: auto; flex: 1; min-height: 0;">
                 <template x-if="!activeSessionId">
                   <div class="empty" style="padding-top: 40px;">连接 SSH 后显示远端文件。</div>
                 </template>
@@ -235,7 +235,7 @@
               </div>
             </div>
             
-            <div x-show="rightTab === 'status'" style="display: flex; flex-direction: column; height: 100%;">
+            <div x-show="rightTab === 'status'" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
               <div class="panel-head" style="margin-bottom: 0;">
                 <h2 style="font-size: 16px;">服务器状态</h2>
                 <button x-show="!isMobile" @click="refreshFiles()" class="icon-btn"><span class="material-symbols-rounded" style="font-size: 16px;">refresh</span></button>

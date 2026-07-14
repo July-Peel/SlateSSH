@@ -247,26 +247,31 @@ func (h *Hub) handleSSHConnect(ctx context.Context, socket *websocket.Conn, mess
 
 	connection, err := h.connectionsService.GetDecrypted(connectionID)
 	if err != nil {
-		return err
+		_ = h.write(socket, Message{Type: "error", Payload: map[string]any{"connectionId": connectionID, "message": err.Error()}})
+		return nil
 	}
 	if connection == nil {
-		return fmt.Errorf("connection not found")
+		_ = h.write(socket, Message{Type: "error", Payload: map[string]any{"connectionId": connectionID, "message": "connection not found"}})
+		return nil
 	}
 
 	client, err := sshsession.Dial(connection)
 	if err != nil {
-		return err
+		_ = h.write(socket, Message{Type: "error", Payload: map[string]any{"connectionId": connectionID, "message": err.Error()}})
+		return nil
 	}
 	shell, input, err := sshsession.OpenShell(client, 120, 32)
 	if err != nil {
 		_ = client.Close()
-		return err
+		_ = h.write(socket, Message{Type: "error", Payload: map[string]any{"connectionId": connectionID, "message": err.Error()}})
+		return nil
 	}
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
 		_ = shell.Close()
 		_ = client.Close()
-		return err
+		_ = h.write(socket, Message{Type: "error", Payload: map[string]any{"connectionId": connectionID, "message": err.Error()}})
+		return nil
 	}
 
 	sessionID := uuid.NewString()
