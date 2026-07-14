@@ -119,8 +119,8 @@
             </div>
 
             <div class="terminal-commandbar" x-show="activeSessionId">
-              <button class="icon-btn" @click="copyTerminalSelection()" title="复制"><span class="material-symbols-rounded">content_copy</span></button>
-              <button class="icon-btn" @click="mobileTerminalPaste()" title="粘贴"><span class="material-symbols-rounded">content_paste</span></button>
+              <button class="icon-btn" x-show="isMobile" @click="copyTerminalSelection()" title="复制"><span class="material-symbols-rounded">content_copy</span></button>
+              <button class="icon-btn" x-show="isMobile" @click="mobileTerminalPaste()" title="粘贴"><span class="material-symbols-rounded">content_paste</span></button>
               <button class="icon-btn" @click="clearActiveTerminal()" title="清屏"><span class="material-symbols-rounded">mop</span></button>
               <div class="terminal-search-box">
                 <span class="material-symbols-rounded">search</span>
