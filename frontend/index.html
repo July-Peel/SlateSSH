@@ -90,7 +90,7 @@
                       <span x-text="connection.username + '@' + connection.host.replace(/[0-9]/g, '*') + ':' + connection.port"></span>
                     </div>
                   </div>
-                  <button class="icon-btn hide-icon" @click.stop="editConnection(connection); showConnectionManager = true;" title="编辑"><span class="material-symbols-rounded" style="font-size:16px;">edit</span></button>
+                  <button class="icon-btn hide-icon" @click.stop="editConnection(connection, 'sidebar')" title="编辑"><span class="material-symbols-rounded" style="font-size:16px;">edit</span></button>
                 </div>
               </template>
               <div class="empty" x-show="!connections.length" style="padding-top: 24px;">暂无已保存的连接</div>
@@ -193,7 +193,7 @@
               <button class="icon-btn" x-show="isMobile" @click="showMobileStatus = false"><span class="material-symbols-rounded">close</span></button>
             </div>
 
-            <div x-show="rightTab === 'files'" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+            <div class="side-panel-body" x-show="rightTab === 'files'">
               <div class="panel-head" style="display:none;">
                 <h2>SFTP 文件</h2>
               </div>
@@ -215,7 +215,7 @@
                 <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
               </div>
               
-              <div class="file-list" style="margin-top: 12px; background: transparent; overflow-y: auto; flex: 1; min-height: 0;">
+              <div class="file-list">
                 <template x-if="!activeSessionId">
                   <div class="empty" style="padding-top: 40px;">连接 SSH 后显示远端文件。</div>
                 </template>
@@ -235,13 +235,13 @@
               </div>
             </div>
             
-            <div x-show="rightTab === 'status'" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+            <div class="side-panel-body" x-show="rightTab === 'status'">
               <div class="panel-head" style="margin-bottom: 0;">
                 <h2 style="font-size: 16px;">服务器状态</h2>
                 <button x-show="!isMobile" @click="refreshFiles()" class="icon-btn"><span class="material-symbols-rounded" style="font-size: 16px;">refresh</span></button>
               </div>
               <template x-if="activeStatus">
-                <div class="status-list" style="margin-top: 12px;">
+                <div class="status-list">
                   <div class="status-info-row"><span>系统</span><strong x-text="activeStatus.osName || '-' "></strong></div>
                   <div class="status-info-row"><span>IP</span><strong x-text="activeStatus.serverIp || '-' "></strong></div>
                   <div class="status-grid">
@@ -284,15 +284,15 @@
           <section class="connection-modal">
             <div class="modal-head">
               <h2 x-text="showConnectionForm ? (connectionForm.id ? '编辑连接' : '新增连接') : '连接管理'"></h2>
-              <button @click="showConnectionForm ? showConnectionForm = false : closeConnectionManager()" class="icon-btn" style="border: none; background: transparent; padding: 4px;">
-                <span class="material-symbols-rounded" x-text="showConnectionForm ? 'arrow_back' : 'close'"></span>
+              <button @click="showConnectionForm ? cancelConnectionForm() : closeConnectionManager()" class="icon-btn" style="border: none; background: transparent; padding: 4px;">
+                <span class="material-symbols-rounded" x-text="showConnectionForm && connectionFormSource === 'manager' ? 'arrow_back' : 'close'"></span>
               </button>
             </div>
             <div class="connection-layout">
               <div class="manager-connection-list" x-show="!showConnectionForm">
                 <div class="list-head">
                   <strong>已保存连接</strong>
-                  <button @click="newConnection()" class="primary" style="padding: 6px 12px; border-radius: 20px;"><span class="material-symbols-rounded" style="font-size:18px;">add</span> 新增</button>
+                  <button @click="newConnection('SSH', 'manager')" class="primary" style="padding: 6px 12px; border-radius: 20px;"><span class="material-symbols-rounded" style="font-size:18px;">add</span> 新增</button>
                 </div>
                 <template x-for="connection in connections" :key="connection.id">
                   <div class="manager-connection-card">
@@ -346,7 +346,7 @@
                 <div class="form-actions">
                   <button class="primary" type="submit">保存</button>
                   <button type="button" @click="testConnection()">测试</button>
-                  <button type="button" @click="showConnectionForm = false">取消</button>
+                  <button type="button" @click="cancelConnectionForm()">取消</button>
                 </div>
               </form>
             </div>
@@ -362,14 +362,20 @@
         </div>
 
         <div x-show="activeEditorTab" class="editor-backdrop" :class="editorWindow.minimized ? 'is-minimized' : ''">
-          <div class="editor-window" :class="{ maximized: editorWindow.maximized, minimized: editorWindow.minimized, resizing: editorWindow.resizing }" :style="editorWindowStyle()">
+                    <div class="editor-window" :class="{ maximized: editorWindow.maximized, minimized: editorWindow.minimized, resizing: editorWindow.resizing, 'is-saving': editorSaveFeedback.state === 'saving', 'save-success': editorSaveFeedback.state === 'saved' }" :style="editorWindowStyle()">
+            <div class="editor-save-toast" x-show="editorSaveFeedback.state === 'saved'" x-transition.opacity.duration.200ms>
+              <span class="material-symbols-rounded">check_circle</span>
+              <span>已保存</span>
+            </div>
             <div class="editor-head" @pointerdown="startEditorDrag($event)" @dblclick="toggleEditorMaximize()">
               <div class="editor-title">
                 <strong x-text="activeEditorTab?.name || ''"></strong>
                 <small x-text="activeEditorTab?.path || ''"></small>
               </div>
               <div class="editor-actions">
-                <button class="icon-btn" @click.stop="saveEditor()" title="保存"><span class="material-symbols-rounded">save</span></button>
+                <button class="icon-btn editor-save-btn" :class="{ 'is-saving': editorSaveFeedback.state === 'saving', 'is-saved': editorSaveFeedback.state === 'saved' }" @click.stop="saveEditor()" :title="editorSaveFeedback.state === 'saved' ? '已保存' : (editorSaveFeedback.state === 'saving' ? '保存中…' : '保存')" :disabled="editorSaveFeedback.state === 'saving'">
+                  <span class="material-symbols-rounded" x-text="editorSaveFeedback.state === 'saved' ? 'check' : (editorSaveFeedback.state === 'saving' ? 'progress_activity' : 'save')"></span>
+                </button>
                 <button class="icon-btn" @click.stop="minimizeEditor()" title="最小化"><span class="material-symbols-rounded">minimize</span></button>
                 <button class="icon-btn" @click.stop="toggleEditorMaximize()" :title="editorWindow.maximized ? '还原' : '最大化'"><span class="material-symbols-rounded" x-text="editorWindow.maximized ? 'filter_none' : 'crop_square'"></span></button>
                 <button class="icon-btn" @click.stop="closeEditorTab(activeEditorTabId)" title="关闭"><span class="material-symbols-rounded">close</span></button>

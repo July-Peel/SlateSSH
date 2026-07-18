@@ -32,6 +32,7 @@ function shadowApp() {
     showEditorPanel: false,
     showConnectionForm: false,
     showConnectionManager: false,
+    connectionFormSource: null, // 'sidebar' | 'manager'
     isFullscreen: false,
     commandInput: '',
     terminalSearch: '',
@@ -47,6 +48,7 @@ function shadowApp() {
     pendingPasteTarget: null,
     terminalPasteBox: { visible: false, text: '' },
     terminalCopyViewer: { visible: false, text: '' },
+    editorSaveFeedback: { state: 'idle', path: '', timer: null },
     editorWindow: {
       x: 420,
       y: 90,
@@ -363,6 +365,9 @@ function shadowApp() {
 
     closeConnectionManager() {
       this.showConnectionManager = false;
+      this.showConnectionForm = false;
+      this.connectionFormSource = null;
+      this.testMessage = '';
     },
 
     async refreshConnections() {
@@ -373,12 +378,23 @@ function shadowApp() {
     },
 
 
-    newConnection(type = 'SSH') {
+    newConnection(type = 'SSH', source = 'sidebar') {
       this.connectionForm = { id: null, name: '', type, host: '', port: type === 'RDP' ? 3389 : 22, username: type === 'RDP' ? '' : 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' };
       this.testMessage = '';
       this.testMessageType = 'info';
+      this.connectionFormSource = source === 'manager' ? 'manager' : 'sidebar';
       this.showConnectionForm = true;
       this.showConnectionManager = true;
+    },
+
+    cancelConnectionForm() {
+      this.showConnectionForm = false;
+      this.testMessage = '';
+      if (this.connectionFormSource === 'manager') {
+        this.connectionFormSource = null;
+        return;
+      }
+      this.closeConnectionManager();
     },
 
     normalizeConnectionForm() {
@@ -394,7 +410,8 @@ function shadowApp() {
       if (!this.connectionForm.auth_method) this.connectionForm.auth_method = 'password';
     },
 
-    editConnection(connection) {
+    editConnection(connection, source = 'manager') {
+      this.connectionFormSource = source === 'sidebar' ? 'sidebar' : 'manager';
       this.showConnectionForm = true;
       this.showConnectionManager = true;
       this.connectionForm = {
@@ -420,8 +437,14 @@ function shadowApp() {
       const resp = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await resp.json();
       if (!resp.ok) { this.error = data.message || '保存失败'; return; }
+      const returnToManager = this.connectionFormSource === 'manager';
       this.showConnectionForm = false;
-      this.showConnectionManager = false;
+      this.connectionFormSource = null;
+      if (returnToManager) {
+        this.showConnectionManager = true;
+      } else {
+        this.showConnectionManager = false;
+      }
       this.testMessage = payload.id ? '连接已更新。' : '连接已保存。';
       this.testMessageType = 'success';
       this.connectionForm = { id: null, name: '', type: 'SSH', host: '', port: 22, username: 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' };
@@ -588,8 +611,10 @@ function shadowApp() {
         this.files = entries;
       }
       if (message.type === 'sftp:writefile:result') {
-        this.testMessage = `已保存 ${message.payload?.path || ''}`;
+        const savedPath = message.payload?.path || '';
+        this.testMessage = `已保存 ${savedPath}`;
         this.testMessageType = 'success';
+        this.playEditorSaveSuccess(savedPath);
       }
       if (message.type === 'sftp:mkdir:result') {
         this.testMessage = `已创建目录 ${message.payload?.path || ''}`;
@@ -833,20 +858,54 @@ function shadowApp() {
         clearTimeout(this._terminalFocusTimer);
         this._terminalFocusTimer = setTimeout(() => this.refocusTerminal(true), 40);
       });
-      const copySelection = async () => {
+      // Selection copy: only after a real drag-select, finalize after xterm updates selection
+      let selecting = false;
+      let selectMoved = false;
+      let selectStartX = 0;
+      let selectStartY = 0;
+      const onDocMouseUp = (event) => {
+        if (!selecting || event.button !== 0) return;
+        selecting = false;
+        document.removeEventListener('mouseup', onDocMouseUp);
+        document.removeEventListener('mousemove', onDocMouseMove);
+        if (!selectMoved) return;
+        if (!this.terminals[id]) return;
+        // Read selection synchronously in the same user-gesture turn (required for clipboard API)
         const text = term.getSelection();
         if (!text) return;
-        try { await navigator.clipboard.writeText(text); } catch (_) {}
+        void this.writeClipboardText(text);
       };
-      term.element?.addEventListener('mouseup', copySelection);
+      const onDocMouseMove = (event) => {
+        if (!selecting) return;
+        if (Math.abs(event.clientX - selectStartX) > 3 || Math.abs(event.clientY - selectStartY) > 3) {
+          selectMoved = true;
+        }
+      };
+      term.element?.addEventListener('mousedown', (event) => {
+        if (event.button !== 0) return;
+        selecting = true;
+        selectMoved = false;
+        selectStartX = event.clientX;
+        selectStartY = event.clientY;
+        document.addEventListener('mousemove', onDocMouseMove);
+        document.addEventListener('mouseup', onDocMouseUp);
+      });
+
+      // Right-click paste: normalize line endings via term.paste (same as Ctrl+V)
       term.element?.addEventListener('contextmenu', async (event) => {
         event.preventDefault();
+        event.stopPropagation();
         try {
           const text = await navigator.clipboard.readText();
           if (text) {
-            this.sendSocket({ type: 'ssh:input', sessionId: id, payload: { data: text } });
+            this.pasteTextToSession(id, text);
           }
-        } catch (_) {}
+        } catch (_) {
+          // Clipboard permission denied: fall back to paste box on desktop too
+          if (!this.isMobile) {
+            this.openTerminalPasteBox();
+          }
+        }
       });
       this.terminals[id] = term;
       this.searchAddons[id] = search;
@@ -932,6 +991,74 @@ function shadowApp() {
       this.searchAddons[this.activeSessionId]?.findPrevious?.(this.terminalSearch, { caseSensitive: false });
     },
 
+
+    /** Normalize clipboard text for PTY paste: CRLF/CR/LF -> single CR (Enter). */
+    normalizeTerminalPasteText(text) {
+      return String(text ?? '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\n/g, '\r');
+    },
+
+    /**
+     * Paste into a session the same way a local terminal would.
+     * Prefer xterm.paste() so bracketed-paste mode is honored and newlines stay single.
+     */
+    pasteTextToSession(sessionId, text) {
+      if (!sessionId || text == null || text === '') return;
+      const term = this.terminals[sessionId];
+      if (term && typeof term.paste === 'function') {
+        try {
+          term.paste(String(text));
+          return;
+        } catch (_) {
+          // fall through
+        }
+      }
+      const normalized = this.normalizeTerminalPasteText(text);
+      this.sendSocket({ type: 'ssh:input', sessionId, payload: { data: normalized } });
+    },
+
+    /** Robust clipboard write with Clipboard API + execCommand fallback. */
+    async writeClipboardText(text) {
+      if (text == null || text === '') return false;
+      const value = String(text);
+
+      // Prefer async Clipboard API when available (keeps multi-line text intact)
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(value);
+          return true;
+        } catch (_) {
+          // fall through to execCommand
+        }
+      }
+
+      // Fallback for non-secure contexts / denied permissions
+      let ta;
+      try {
+        ta = document.createElement('textarea');
+        ta.value = value;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none;z-index:-1;';
+        document.body.appendChild(ta);
+        const selection = document.getSelection();
+        const previousRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, value.length);
+        const ok = document.execCommand('copy');
+        if (previousRange && selection) {
+          selection.removeAllRanges();
+          selection.addRange(previousRange);
+        }
+        return !!ok;
+      } catch (_) {
+        return false;
+      } finally {
+        ta?.remove?.();
+      }
+    },
     async copyTerminalSelection() {
       const term = this.terminals[this.activeSessionId];
       const value = term?.getSelection?.() || this.getTerminalAllText(this.activeSessionId);
@@ -940,28 +1067,10 @@ function shadowApp() {
         this.testMessageType = 'info';
         return;
       }
-      try {
-        await navigator.clipboard.writeText(value);
-        this.testMessage = '已复制到剪贴板';
-        this.testMessageType = 'success';
-      } catch (_) {
-        const ta = document.createElement('textarea');
-        ta.value = value;
-        ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-        document.body.appendChild(ta);
-        ta.select();
-        try {
-          document.execCommand('copy');
-          this.testMessage = '已复制到剪贴板';
-          this.testMessageType = 'success';
-        } catch (error) {
-          this.testMessage = '复制失败';
-          this.testMessageType = 'error';
-        }
-        ta.remove();
-      } finally {
-        this.refocusTerminal();
-      }
+      const ok = await this.writeClipboardText(value);
+      this.testMessage = ok ? '已复制到剪贴板' : '复制失败';
+      this.testMessageType = ok ? 'success' : 'error';
+      this.refocusTerminal();
     },
 
     getTerminalAllText(id = this.activeSessionId) {
@@ -1005,7 +1114,7 @@ function shadowApp() {
     async sendTerminalPasteText() {
       const text = this.terminalPasteBox.text;
       if (text && this.activeSessionId) {
-        await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: text } });
+        this.pasteTextToSession(this.activeSessionId, text);
       }
       this.terminalPasteBox.visible = false;
       this.terminalPasteBox.text = '';
@@ -1478,10 +1587,57 @@ function shadowApp() {
     saveEditor() {
       const tab = this.activeEditorTab;
       if (!tab || !this.activeSessionId) return;
-      this.sendSocket({ type: 'sftp:writefile', sessionId: this.activeSessionId, payload: { path: tab.path, content: tab.content } });
-      this.testMessage = `已保存 ${tab.path}`;
-      this.testMessageType = 'success';
+      if (this.editorSaveFeedback.state === 'saving') return;
+      // Keep monaco buffer in sync before write
+      if (window.appMonacoInstance && !this.isMonacoUpdating) {
+        try { tab.content = window.appMonacoInstance.getValue(); } catch (_) {}
+      }
+      this.setEditorSaveFeedback('saving', tab.path);
+      this.sendSocket({
+        type: 'sftp:writefile',
+        sessionId: this.activeSessionId,
+        payload: { path: tab.path, content: tab.content }
+      });
+      this.testMessage = `正在保存 ${tab.path}`;
+      this.testMessageType = 'info';
       setTimeout(() => this.refreshFiles(), 150);
+    },
+
+    setEditorSaveFeedback(state, path = '') {
+      if (this.editorSaveFeedback.timer) {
+        clearTimeout(this.editorSaveFeedback.timer);
+        this.editorSaveFeedback.timer = null;
+      }
+      this.editorSaveFeedback.state = state;
+      this.editorSaveFeedback.path = path || '';
+      if (state === 'saved') {
+        this.editorSaveFeedback.timer = setTimeout(() => {
+          this.editorSaveFeedback.state = 'idle';
+          this.editorSaveFeedback.path = '';
+          this.editorSaveFeedback.timer = null;
+        }, 1800);
+      } else if (state === 'saving') {
+        // Safety timeout if server never replies
+        this.editorSaveFeedback.timer = setTimeout(() => {
+          if (this.editorSaveFeedback.state === 'saving') {
+            this.editorSaveFeedback.state = 'idle';
+            this.editorSaveFeedback.path = '';
+            this.editorSaveFeedback.timer = null;
+          }
+        }, 8000);
+      }
+    },
+
+    playEditorSaveSuccess(path = '') {
+      const activePath = this.activeEditorTab?.path || '';
+      const feedbackPath = this.editorSaveFeedback.path || '';
+      // Show animation when the saved path matches open editor, or when we were waiting on a save
+      const isEditorSave =
+        (activePath && path && activePath === path) ||
+        (this.editorSaveFeedback.state === 'saving' && (!feedbackPath || !path || feedbackPath === path)) ||
+        (activePath && !path);
+      if (!this.activeEditorTab || !isEditorSave) return;
+      this.setEditorSaveFeedback('saved', path || activePath);
     },
 
     promptWriteFile() {
@@ -1660,7 +1816,7 @@ function shadowApp() {
       try {
         const text = await navigator.clipboard.readText();
         if (text) {
-          await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: text } });
+          this.pasteTextToSession(this.activeSessionId, text);
           this.refocusTerminal(true);
           return;
         }
