@@ -1,0 +1,29 @@
+{
+  "name": "SlateSSH",
+  "short_name": "SlateSSH",
+  "description": "SSH / RDP 终端与文件管理",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1a26",
+  "theme_color": "#0068d6",
+  "icons": [
+    {
+      "src": "/assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
