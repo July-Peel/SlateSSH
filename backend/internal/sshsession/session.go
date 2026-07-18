@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -16,46 +17,61 @@ import (
 // 输入参数：connection 表示连接配置。
 // 输出参数：返回 *ssh.Client, error；error 表示执行失败原因。
 func Dial(connection *models.DecryptedConnection) (*ssh.Client, error) {
-	auth, err := authMethod(connection)
+	auths, err := authMethods(connection)
 	if err != nil {
 		return nil, err
 	}
 	cfg := &ssh.ClientConfig{
 		User:            connection.Username,
-		Auth:            []ssh.AuthMethod{auth},
+		Auth:            auths,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         20 * time.Second,
 	}
-	return ssh.Dial("tcp", net.JoinHostPort(connection.Host, strconv.Itoa(connection.Port)), cfg)
+	host := strings.TrimSpace(strings.Trim(connection.Host, "[]"))
+	return ssh.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(connection.Port)), cfg)
 }
 
-// authMethod 用于根据连接配置构造 SSH 认证方式。
-// 输入参数：connection 表示连接配置。
-// 输出参数：返回 ssh.AuthMethod, error；error 表示执行失败原因。
-func authMethod(connection *models.DecryptedConnection) (ssh.AuthMethod, error) {
-	switch connection.AuthMethod {
+// authMethods builds SSH auth methods from a decrypted connection.
+// Password auth includes keyboard-interactive for servers that reject pure "password".
+func authMethods(connection *models.DecryptedConnection) ([]ssh.AuthMethod, error) {
+	method := strings.ToLower(strings.TrimSpace(connection.AuthMethod))
+	if method == "" {
+		method = "password"
+	}
+	switch method {
 	case "password":
-		return ssh.Password(connection.Password), nil
-	case "key":
-		if connection.Passphrase != "" {
-			signer, err := ssh.ParsePrivateKeyWithPassphrase([]byte(connection.PrivateKey), []byte(connection.Passphrase))
-			if err == nil {
-				return ssh.PublicKeys(signer), nil
-			}
+		if connection.Password == "" {
+			return nil, fmt.Errorf("password is empty")
 		}
-		signer, err := ssh.ParsePrivateKey([]byte(connection.PrivateKey))
+		pw := connection.Password
+		return []ssh.AuthMethod{
+			ssh.Password(pw),
+			ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+				answers := make([]string, len(questions))
+				for i := range questions {
+					answers[i] = pw
+				}
+				return answers, nil
+			}),
+		}, nil
+	case "key":
+		var signer ssh.Signer
+		var err error
+		if connection.Passphrase != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(connection.PrivateKey), []byte(connection.Passphrase))
+		}
+		if signer == nil {
+			signer, err = ssh.ParsePrivateKey([]byte(connection.PrivateKey))
+		}
 		if err != nil {
 			return nil, err
 		}
-		return ssh.PublicKeys(signer), nil
+		return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
 	default:
 		return nil, fmt.Errorf("unsupported auth method: %s", connection.AuthMethod)
 	}
 }
 
-// OpenShell 用于打开带 PTY 的 SSH Shell 会话。
-// 输入参数：client 表示SSH 客户端；cols 表示终端列数；rows 表示终端行数。
-// 输出参数：返回 io.ReadWriteCloser, io.WriteCloser, error；error 表示执行失败原因。
 func OpenShell(client *ssh.Client, cols, rows int) (io.ReadWriteCloser, io.WriteCloser, error) {
 	session, err := client.NewSession()
 	if err != nil {

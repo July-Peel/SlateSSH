@@ -453,7 +453,23 @@ function shadowApp() {
 
     async testConnection() {
       this.testResultModal = { visible: true, title: '测试连接', message: '正在测试当前信息，请稍候...', type: 'info' };
-      const resp = await fetch('/api/v1/connections/test-unsaved', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.connectionForm) });
+      // Editing an existing connection: if password/key left blank, use DB-stored secrets via saved-test API.
+      const form = this.connectionForm || {};
+      const isSaved = !!form.id;
+      const secretsMissing = form.auth_method === 'key'
+        ? !(form.private_key && String(form.private_key).trim())
+        : !(form.password && String(form.password).length);
+      let resp;
+      if (isSaved && secretsMissing) {
+        resp = await fetch(`/api/v1/connections/${form.id}/test`, { method: 'POST' });
+      } else {
+        // Always include id so backend can fill blank secrets from DB when present.
+        resp = await fetch('/api/v1/connections/test-unsaved', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form)
+        });
+      }
       const data = await resp.json();
       this.testResultModal.message = resp.ok ? `连接成功，延迟 ${data.latency} ms` : (data.message || '连接失败');
       this.testResultModal.type = resp.ok ? 'success' : 'error';
@@ -858,26 +874,64 @@ function shadowApp() {
         clearTimeout(this._terminalFocusTimer);
         this._terminalFocusTimer = setTimeout(() => this.refocusTerminal(true), 40);
       });
-      // Selection copy: only after a real drag-select, finalize after xterm updates selection
+      // Selection auto-copy: cache selection while dragging, copy on mouseup in the same gesture.
       let selecting = false;
       let selectMoved = false;
       let selectStartX = 0;
       let selectStartY = 0;
+      let pendingSelection = '';
+      if (typeof term.onSelectionChange === 'function') {
+        term.onSelectionChange(() => {
+          try {
+            const t = term.getSelection();
+            if (t) pendingSelection = t;
+          } catch (_) {}
+        });
+      }
+      const copyTerminalDragSelection = () => {
+        if (!this.terminals[id]) return false;
+        const text = (term.getSelection && term.getSelection()) || pendingSelection || '';
+        if (!text) return false;
+        // Sync first — must stay in the user-gesture stack (HTTP / permission issues).
+        if (this.copyTextViaExecCommand(text)) return true;
+        // Same-turn async Clipboard API (do not await before deciding / falling back).
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            void navigator.clipboard.writeText(text);
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      };
       const onDocMouseUp = (event) => {
-        if (!selecting || event.button !== 0) return;
+        if (!selecting) return;
+        // Some browsers report buttons bitmask more reliably than button on mouseup
+        if (typeof event.button === 'number' && event.button !== 0) return;
         selecting = false;
-        document.removeEventListener('mouseup', onDocMouseUp);
-        document.removeEventListener('mousemove', onDocMouseMove);
+        document.removeEventListener('mouseup', onDocMouseUp, true);
+        document.removeEventListener('mousemove', onDocMouseMove, true);
         if (!selectMoved) return;
-        if (!this.terminals[id]) return;
-        // Read selection synchronously in the same user-gesture turn (required for clipboard API)
-        const text = term.getSelection();
-        if (!text) return;
-        void this.writeClipboardText(text);
+        // Immediate attempt (same user-gesture turn)
+        if (copyTerminalDragSelection()) {
+          pendingSelection = '';
+          return;
+        }
+        // xterm may finalize selection slightly after mouseup — retry quickly while
+        // still using sync execCommand path via preferSync.
+        requestAnimationFrame(() => {
+          if (copyTerminalDragSelection()) {
+            pendingSelection = '';
+            return;
+          }
+          setTimeout(() => {
+            copyTerminalDragSelection();
+            pendingSelection = '';
+          }, 0);
+        });
       };
       const onDocMouseMove = (event) => {
         if (!selecting) return;
-        if (Math.abs(event.clientX - selectStartX) > 3 || Math.abs(event.clientY - selectStartY) > 3) {
+        if (Math.abs(event.clientX - selectStartX) > 2 || Math.abs(event.clientY - selectStartY) > 2) {
           selectMoved = true;
         }
       };
@@ -887,8 +941,10 @@ function shadowApp() {
         selectMoved = false;
         selectStartX = event.clientX;
         selectStartY = event.clientY;
-        document.addEventListener('mousemove', onDocMouseMove);
-        document.addEventListener('mouseup', onDocMouseUp);
+        pendingSelection = '';
+        // Capture phase so we still see mouseup even if xterm/stopPropagation interferes
+        document.addEventListener('mousemove', onDocMouseMove, true);
+        document.addEventListener('mouseup', onDocMouseUp, true);
       });
 
       // Right-click paste: normalize line endings via term.paste (same as Ctrl+V)
@@ -1019,32 +1075,19 @@ function shadowApp() {
       this.sendSocket({ type: 'ssh:input', sessionId, payload: { data: normalized } });
     },
 
-    /** Robust clipboard write with Clipboard API + execCommand fallback. */
-    async writeClipboardText(text) {
-      if (text == null || text === '') return false;
-      const value = String(text);
-
-      // Prefer async Clipboard API when available (keeps multi-line text intact)
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        try {
-          await navigator.clipboard.writeText(value);
-          return true;
-        } catch (_) {
-          // fall through to execCommand
-        }
-      }
-
-      // Fallback for non-secure contexts / denied permissions
+    /** Synchronous execCommand copy — keeps multi-line text and works inside user gestures. */
+    copyTextViaExecCommand(value) {
       let ta;
       try {
         ta = document.createElement('textarea');
         ta.value = value;
         ta.setAttribute('readonly', '');
-        ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none;z-index:-1;';
+        // Must be in-DOM and selectable; opacity 0 is fine, display:none is not.
+        ta.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;padding:0;border:0;opacity:0;z-index:2147483647;';
         document.body.appendChild(ta);
         const selection = document.getSelection();
         const previousRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-        ta.focus();
+        ta.focus({ preventScroll: true });
         ta.select();
         ta.setSelectionRange(0, value.length);
         const ok = document.execCommand('copy');
@@ -1058,6 +1101,40 @@ function shadowApp() {
       } finally {
         ta?.remove?.();
       }
+    },
+
+    /**
+     * Robust clipboard write.
+     * preferSync: true — try execCommand first (required for drag-select auto-copy;
+     * async Clipboard API often fails after await and breaks the user-gesture chain).
+     */
+    async writeClipboardText(text, options = {}) {
+      if (text == null || text === '') return false;
+      const value = String(text);
+      const preferSync = !!(options && options.preferSync);
+
+      if (preferSync) {
+        if (this.copyTextViaExecCommand(value)) return true;
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            await navigator.clipboard.writeText(value);
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      }
+
+      // Default: async Clipboard API first (better for large text / explicit copy buttons)
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(value);
+          return true;
+        } catch (_) {
+          // fall through — only useful if still in gesture; sync path is best-effort
+        }
+      }
+
+      return this.copyTextViaExecCommand(value);
     },
     async copyTerminalSelection() {
       const term = this.terminals[this.activeSessionId];

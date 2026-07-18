@@ -19,6 +19,7 @@ type Service struct {
 }
 
 type UpsertInput struct {
+	ID         int64  `json:"id"`
 	Name       string `json:"name"`
 	Type       string `json:"type"`
 	Host       string `json:"host"`
@@ -106,9 +107,14 @@ func (s *Service) GetDecrypted(id int64) (*models.DecryptedConnection, error) {
 // 输入参数：ctx 表示上下文对象；input 表示连接输入参数。
 // 输出参数：返回 int64, error；error 表示执行失败原因。
 func (s *Service) Test(ctx context.Context, input UpsertInput) (int64, error) {
+	input, err := s.resolveTestInput(input)
+	if err != nil {
+		return 0, err
+	}
+
 	host := strings.TrimSpace(strings.Trim(input.Host, "[]"))
-	if host == "" || input.Username == "" || input.Port <= 0 {
-		return 0, errBadRequest("缺少必要的连接信息 (host, port, username, auth_method)。")
+	if host == "" || strings.TrimSpace(input.Username) == "" || input.Port <= 0 {
+		return 0, errBadRequest("缺少必要的连接信息 (host, port, username)。")
 	}
 
 	connectionType := normalizeConnectionType(input.Type)
@@ -123,28 +129,15 @@ func (s *Service) Test(ctx context.Context, input UpsertInput) (int64, error) {
 		return time.Since(started).Milliseconds(), nil
 	}
 
-	authMethod := strings.ToLower(strings.TrimSpace(input.AuthMethod))
-	var auth ssh.AuthMethod
-	switch authMethod {
-	case "password":
-		auth = ssh.Password(input.Password)
-	case "key":
-		signer, err := ssh.ParsePrivateKeyWithPassphrase([]byte(input.PrivateKey), []byte(input.Passphrase))
-		if err != nil {
-			signer, err = ssh.ParsePrivateKey([]byte(input.PrivateKey))
-			if err != nil {
-				return 0, err
-			}
-		}
-		auth = ssh.PublicKeys(signer)
-	default:
-		return 0, errBadRequest("无效的认证方式。")
+	authMethods, err := buildSSHAuthMethods(input)
+	if err != nil {
+		return 0, err
 	}
 
 	started := time.Now()
 	config := &ssh.ClientConfig{
-		User:            input.Username,
-		Auth:            []ssh.AuthMethod{auth},
+		User:            strings.TrimSpace(input.Username),
+		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         15 * time.Second,
 	}
@@ -155,6 +148,97 @@ func (s *Service) Test(ctx context.Context, input UpsertInput) (int64, error) {
 	}
 	_ = client.Close()
 	return time.Since(started).Milliseconds(), nil
+}
+
+// resolveTestInput fills missing secrets from the database when testing a saved connection.
+// This allows "test" on existing servers (and edit forms with blank password fields) to use
+// the encrypted credentials already stored in the database.
+func (s *Service) resolveTestInput(input UpsertInput) (UpsertInput, error) {
+	if input.ID <= 0 {
+		return input, nil
+	}
+	saved, err := s.GetDecrypted(input.ID)
+	if err != nil {
+		return input, err
+	}
+	if saved == nil {
+		return input, errBadRequest("连接未找到。")
+	}
+
+	// Prefer explicit form values; fall back to DB for empty secrets / blank core fields.
+	if strings.TrimSpace(input.Type) == "" {
+		input.Type = saved.Type
+	}
+	if strings.TrimSpace(input.Host) == "" {
+		input.Host = saved.Host
+	}
+	if input.Port <= 0 {
+		input.Port = saved.Port
+	}
+	if strings.TrimSpace(input.Username) == "" {
+		input.Username = saved.Username
+	}
+	if strings.TrimSpace(input.AuthMethod) == "" {
+		input.AuthMethod = saved.AuthMethod
+	}
+	if input.Password == "" {
+		input.Password = saved.Password
+	}
+	if strings.TrimSpace(input.PrivateKey) == "" {
+		input.PrivateKey = saved.PrivateKey
+	}
+	if input.Passphrase == "" {
+		input.Passphrase = saved.Passphrase
+	}
+	return input, nil
+}
+
+func buildSSHAuthMethods(input UpsertInput) ([]ssh.AuthMethod, error) {
+	authMethod := strings.ToLower(strings.TrimSpace(input.AuthMethod))
+	if authMethod == "" {
+		authMethod = "password"
+	}
+	switch authMethod {
+	case "password":
+		if input.Password == "" {
+			return nil, errBadRequest("未找到可用于测试的密码，请填写密码或确认数据库中已保存密码。")
+		}
+		return passwordAuthMethods(input.Password), nil
+	case "key":
+		if strings.TrimSpace(input.PrivateKey) == "" {
+			return nil, errBadRequest("未找到可用于测试的私钥，请填写私钥或确认数据库中已保存私钥。")
+		}
+		var signer ssh.Signer
+		var err error
+		if input.Passphrase != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(input.PrivateKey), []byte(input.Passphrase))
+		}
+		if signer == nil {
+			signer, err = ssh.ParsePrivateKey([]byte(input.PrivateKey))
+		}
+		if err != nil {
+			return nil, err
+		}
+		return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
+	default:
+		return nil, errBadRequest("无效的认证方式。")
+	}
+}
+
+// passwordAuthMethods returns both password and keyboard-interactive methods.
+// Many cloud SSH servers only accept keyboard-interactive for password logins.
+func passwordAuthMethods(password string) []ssh.AuthMethod {
+	pw := password
+	return []ssh.AuthMethod{
+		ssh.Password(pw),
+		ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+			answers := make([]string, len(questions))
+			for i := range questions {
+				answers[i] = pw
+			}
+			return answers, nil
+		}),
+	}
 }
 
 // TouchLastConnected 用于更新连接最近使用时间。
