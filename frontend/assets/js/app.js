@@ -1495,7 +1495,11 @@ function shadowApp() {
     editorWindowStyle() {
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
       if (this.editorWindow.maximized) {
-        return `left:12px;top:12px;width:calc(100vw - 24px);height:calc(${viewportHeight}px - 24px)`;
+        const left = 12;
+        const top = 12;
+        const width = Math.max(320, window.innerWidth - 24);
+        const height = Math.max(200, viewportHeight - 24);
+        return `left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
       }
       if (this.editorWindow.minimized) {
         const width = Math.min(360, Math.max(260, window.innerWidth - 24));
@@ -1508,7 +1512,10 @@ function shadowApp() {
 
     layoutEditor() {
       this.$nextTick(() => {
-        try { window.appMonacoInstance?.layout?.(); } catch (_) {}
+        try {
+          const inst = window.appMonacoInstance || this.monacoInstance;
+          inst?.layout?.();
+        } catch (_) {}
       });
     },
 
@@ -1544,11 +1551,18 @@ function shadowApp() {
         this.editorWindow.y = restore.y;
         this.editorWindow.width = restore.width;
         this.editorWindow.height = restore.height;
+      } else if (!this.editorWindow.width || !this.editorWindow.height) {
+        this.placeEditorWindow();
+        return;
       }
       this.editorWindow.maximized = false;
       this.editorWindow.minimized = false;
       this.editorWindow.restore = null;
       this.clampEditorWindow();
+      this.$nextTick(() => {
+        this.layoutEditor();
+        requestAnimationFrame(() => this.layoutEditor());
+      });
     },
 
     minimizeEditor() {
@@ -1573,7 +1587,11 @@ function shadowApp() {
       }
       this.rememberEditorGeometry();
       this.editorWindow.maximized = true;
-      this.layoutEditor();
+      this.editorWindow.minimized = false;
+      this.$nextTick(() => {
+        this.layoutEditor();
+        requestAnimationFrame(() => this.layoutEditor());
+      });
     },
 
     startEditorDrag(event) {

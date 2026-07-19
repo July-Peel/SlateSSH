@@ -855,7 +855,7 @@ button.tab .tab-close:hover { opacity: 1; }
 .editor-head { cursor: move; background: var(--panel); }
 .editor-head small {
   display: block;
-  max-width: 520px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -863,7 +863,7 @@ button.tab .tab-close:hover { opacity: 1; }
   color: var(--text-secondary);
   font-size: 12px;
 }
-.editor-body { position: relative; width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 0; }
+.editor-body { position: relative; width: 100%; height: 100%; min-height: 0; min-width: 0; overflow: hidden; border: 0; border-radius: 0; }
 .editor-textarea, .monaco-editor-container { width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 0; }
 .editor-textarea {
   padding: 12px;
@@ -1984,6 +1984,7 @@ button.tab .tab-close:hover { opacity: 1; }
   min-height: 44px;
   display: grid;
   grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
   overflow: hidden;
@@ -1991,6 +1992,7 @@ button.tab .tab-close:hover { opacity: 1; }
   box-shadow: var(--shadow-dialog);
   resize: none !important;
   pointer-events: auto;
+  isolation: isolate;
   animation: winuiDialogIn 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .editor-window.maximized {
@@ -2005,6 +2007,15 @@ button.tab .tab-close:hover { opacity: 1; }
   user-select: none;
 }
 .editor-head {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   height: 48px;
   min-height: 48px;
   padding: 0 8px 0 14px !important;
@@ -2012,36 +2023,60 @@ button.tab .tab-close:hover { opacity: 1; }
   cursor: grab;
   touch-action: none;
   user-select: none;
+  overflow: visible;
+  flex-shrink: 0;
+  grid-row: 1;
 }
 .editor-head:active {
   cursor: grabbing;
 }
 .editor-title {
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding-right: 148px;
+  box-sizing: border-box;
 }
 .editor-title strong,
 .editor-title small {
   display: block;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .editor-actions {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  bottom: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 2px;
   flex: 0 0 auto;
+  margin: 0;
+  pointer-events: auto;
 }
 .editor-actions .icon-btn {
   width: 34px;
   height: 34px;
   min-width: 34px;
+  flex: 0 0 auto;
 }
 .editor-actions .material-symbols-rounded {
   font-size: 18px;
 }
 .editor-body {
+  position: relative;
+  z-index: 1;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--panel-solid);
 }
 .theme-dark .editor-body {
@@ -2293,6 +2328,12 @@ button.tab .tab-close:hover { opacity: 1; }
     padding-left: calc(12px + env(safe-area-inset-left, 0px)) !important;
     padding-right: calc(6px + env(safe-area-inset-right, 0px)) !important;
   }
+  .editor-title {
+    padding-right: 140px;
+  }
+  .editor-actions {
+    right: calc(4px + env(safe-area-inset-right, 0px));
+  }
   .editor-actions .icon-btn {
     width: 32px;
     min-width: 32px;
@@ -2533,7 +2574,7 @@ button.tab .tab-close:hover { opacity: 1; }
   position: absolute;
   top: 54px;
   left: 50%;
-  z-index: 5;
+  z-index: 8;
   display: inline-flex;
   align-items: center;
   gap: 6px;
