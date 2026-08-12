@@ -143,6 +143,34 @@ function shadowApp() {
       }
     },
 
+    refreshActiveViewport() {
+      this.$nextTick(() => {
+        if (!this.activeSessionId) return;
+        if (this.activeSessionType() === 'RDP') {
+          this.fitRdp(this.activeSessionId);
+        } else {
+          this.resizeActiveTerminal(this.activeSessionId);
+        }
+      });
+    },
+
+    toggleSidebarPanel() {
+      this.showSidebar = !this.showSidebar;
+      this.refreshActiveViewport();
+    },
+
+    toggleUtilityPanel() {
+      if (this.showSftpWidget || this.showStatusWidget) {
+        this.showSftpWidget = false;
+        this.showStatusWidget = false;
+      } else if (this.rightTab === 'status') {
+        this.showStatusWidget = true;
+      } else {
+        this.showSftpWidget = true;
+      }
+      this.refreshActiveViewport();
+    },
+
     get pathSegments() {
       const current = this.activePath || '.';
       const normalized = current.replace(/\\/g, '/');

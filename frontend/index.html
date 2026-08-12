@@ -14,13 +14,9 @@
   <link rel="shortcut icon" href="/assets/icons/favicon.ico">
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" sizes="180x180">
   <link rel="manifest" href="/assets/icons/site.webmanifest">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.css">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260718_editor_restore">
+  <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
+  <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260812_compact_offline">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
@@ -58,11 +54,13 @@
       <div class="workspace">
         <header class="topbar">
           <div class="topbar-actions" style="justify-content: flex-start; flex: 1;">
-            <button @click="isMobile ? showMobileMenu = !showMobileMenu : showSidebar = !showSidebar" class="icon-btn topbar-shortcut"><span class="material-symbols-rounded">menu</span></button>
+            <button @click="isMobile ? showMobileMenu = !showMobileMenu : toggleSidebarPanel()" class="icon-btn topbar-shortcut" :class="!isMobile && showSidebar ? 'active' : ''" :title="showSidebar ? '收起 SSH 管理' : '展开 SSH 管理'" aria-label="切换 SSH 管理面板"><span class="material-symbols-rounded">menu</span></button>
             <div class="window-icon" style="margin-left: 4px; color: var(--accent);"><span class="material-symbols-rounded" style="font-size: 20px;">dock_to_right</span></div>
             <div class="brand" style="margin-left: 6px;">SlateSSH</div>
           </div>
           <div class="topbar-actions">
+            <button x-show="isMobile" @click="showMobileStatus = !showMobileStatus" class="icon-btn topbar-shortcut mobile-files-toggle" :class="showMobileStatus ? 'active' : ''" title="文件与状态" aria-label="打开文件与状态面板"><span class="material-symbols-rounded">folder</span></button>
+            <button x-show="!isMobile" @click="toggleUtilityPanel()" class="icon-btn topbar-shortcut" :class="(showSftpWidget || showStatusWidget) ? 'active' : ''" :title="(showSftpWidget || showStatusWidget) ? '收起文件面板' : '展开文件面板'" aria-label="切换文件和状态面板"><span class="material-symbols-rounded">dock_to_left</span></button>
             <button @click="showConnectionManager = true" class="topbar-shortcut" style="display:none;"><span class="material-symbols-rounded" style="font-size:18px;">dns</span></button>
             <div class="user-avatar" x-text="(currentUser?.username || '?')[0]" style="display:none;"></div>
           </div>
@@ -70,7 +68,7 @@
 
         <div class="drawer-overlay" x-show="isMobile && (showMobileMenu || showMobileSftp || showMobileStatus)" @click="showMobileMenu = false; showMobileSftp = false; showMobileStatus = false"></div>
 
-        <main class="main-grid" :style="`grid-template-columns: ${isMobile ? '1fr' : ((showSidebar ? '300px ' : '') + 'minmax(0, 1fr) ' + ((showSftpWidget || showStatusWidget) ? '340px' : ''))}`">
+        <main class="main-grid" :class="{ 'sidebar-hidden': !showSidebar, 'utilities-hidden': !(showSftpWidget || showStatusWidget) }">
           
           <aside class="connection-panel" x-show="isMobile ? showMobileMenu : showSidebar" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
             <div class="panel-head connection-panel-head" style="margin-bottom: 12px;">
@@ -196,6 +194,7 @@
               <button class="icon-btn" :class="rightTab === 'files' ? 'active' : ''" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false" title="文件"><span class="material-symbols-rounded">folder</span></button>
               <button class="icon-btn" :class="rightTab === 'status' ? 'active' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false" title="状态监控"><span class="material-symbols-rounded">speed</span></button>
               <div style="flex:1"></div>
+              <button class="icon-btn panel-collapse-btn" x-show="!isMobile" @click="toggleUtilityPanel()" title="收起右侧面板" aria-label="收起右侧面板"><span class="material-symbols-rounded">right_panel_close</span></button>
               <button class="icon-btn" x-show="isMobile" @click="showMobileStatus = false"><span class="material-symbols-rounded">close</span></button>
             </div>
 
@@ -211,13 +210,13 @@
                 </div>
               </div>
               
-              <div class="file-actions" style="grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                <button @click="goParentDir()" style="background: var(--control-fill);">上级</button>
-                <button @click="refreshFiles()" style="background: var(--control-fill);">刷新</button>
-                <button @click="promptMkdir()" style="background: var(--control-fill);">新建目录</button>
-                <button @click="promptWriteFile()" style="background: var(--control-fill);">新建文件</button>
-                <button @click="pasteClipboard()" style="background: var(--control-fill);">粘贴</button>
-                <button @click="triggerUpload()" style="background: var(--control-fill);">上传</button>
+              <div class="file-actions compact-icon-actions">
+                <button class="icon-btn" @click="goParentDir()" title="上级目录" aria-label="上级目录"><span class="material-symbols-rounded">drive_file_move</span></button>
+                <button class="icon-btn" @click="refreshFiles()" title="刷新" aria-label="刷新"><span class="material-symbols-rounded">refresh</span></button>
+                <button class="icon-btn" @click="promptMkdir()" title="新建目录" aria-label="新建目录"><span class="material-symbols-rounded">create_new_folder</span></button>
+                <button class="icon-btn" @click="promptWriteFile()" title="新建文件" aria-label="新建文件"><span class="material-symbols-rounded">note_add</span></button>
+                <button class="icon-btn" @click="pasteClipboard()" title="粘贴" aria-label="粘贴"><span class="material-symbols-rounded">content_paste</span></button>
+                <button class="icon-btn" @click="triggerUpload()" title="上传" aria-label="上传"><span class="material-symbols-rounded">upload</span></button>
                 <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
               </div>
               
@@ -420,38 +419,18 @@
     </template>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm/lib/xterm.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-search/lib/addon-search.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="/assets/vendor/xterm/xterm.js"></script>
+  <script src="/assets/vendor/xterm/addon-search.js"></script>
+  <script src="/assets/vendor/xterm/addon-fit.js"></script>
   <script>window.module = window.module || { exports: {} };</script>
-  <script src="https://cdn.jsdelivr.net/npm/guacamole-common-js@1.5.0/dist/cjs/guacamole-common.min.js"></script>
+  <script src="/assets/vendor/guacamole/guacamole-common.min.js"></script>
   <script>
     window.Guacamole = window.Guacamole || window.module.exports;
     if (window.module) { delete window.module; }
   </script>
-  <script>
-    (function() {
-      const cdns = [
-        { loader: 'https://lib.baomitu.com/monaco-editor/0.44.0/min/vs/loader.js', vs: 'https://lib.baomitu.com/monaco-editor/0.44.0/min/vs' },
-        { loader: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.js', vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' },
-        { loader: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js', vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' }
-      ];
-      function tryLoadMonaco(index) {
-        if (index >= cdns.length) { return; }
-        const cdn = cdns[index];
-        const script = document.createElement('script');
-        script.src = cdn.loader;
-        let timeoutId = setTimeout(() => { script.onload = null; script.onerror = null; script.remove(); tryLoadMonaco(index + 1); }, 3000);
-        script.onload = () => {
-          clearTimeout(timeoutId);
-          if (window.require) { window.require.config({ paths: { 'vs': cdn.vs } }); } else { tryLoadMonaco(index + 1); }
-        };
-        script.onerror = () => { clearTimeout(timeoutId); tryLoadMonaco(index + 1); };
-        document.head.appendChild(script);
-      }
-      tryLoadMonaco(0);
-    })();
-  </script>
-  <script src="/assets/js/app.js?v=20260718_editor_restore"></script>
+  <script src="/assets/vendor/monaco/vs/loader.js"></script>
+  <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
+  <script src="/assets/js/app.js?v=20260812_compact_offline"></script>
+  <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>
