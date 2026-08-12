@@ -75,13 +75,14 @@
               <h2 style="font-size: 18px; font-weight: 500;">SSH 连接</h2>
               <button class="icon-btn panel-add-btn" @click="newConnection()" title="新建连接"><span class="material-symbols-rounded">add</span></button>
               <div class="path-input-wrapper" style="margin-top: 12px; position: relative;">
-                <input x-model="commandInput" placeholder="快速连接 user@host:port" class="path-input" @keydown.enter="sendCommandInput()">
-                <button @click="sendCommandInput()" class="path-go-btn" title="连接" style="position: absolute; right: 4px;"><span class="material-symbols-rounded" style="font-size: 18px;">play_arrow</span></button>
+                <span class="material-symbols-rounded path-icon" style="font-size: 17px;">search</span>
+                <input x-model="connectionQuery" type="search" placeholder="搜索服务器名称或 IP" class="path-input connection-search-input" autocomplete="off" aria-label="便捷搜索服务器">
+                <button x-show="connectionQuery" @click="connectionQuery = ''" class="path-go-btn" title="清空搜索" aria-label="清空搜索" style="position: absolute; right: 4px;"><span class="material-symbols-rounded" style="font-size: 16px;">close</span></button>
               </div>
             </div>
             
             <div class="connection-list" style="overflow-y: auto; flex: 1; padding-bottom: 12px; margin: -8px; padding: 8px;">
-              <template x-for="connection in connections" :key="connection.id">
+              <template x-for="connection in filteredConnections" :key="connection.id">
                 <div class="connection-item" :class="isConnectionActive(connection) ? 'active' : ''" @click="openSession(connection)">
                   <div class="connection-content">
                     <div class="item-main">
@@ -98,6 +99,7 @@
                 </div>
               </template>
               <div class="empty" x-show="!connections.length" style="padding-top: 24px;">暂无已保存的连接</div>
+              <div class="empty" x-show="connections.length && !filteredConnections.length" style="padding-top: 24px;">未找到匹配的服务器</div>
             </div>
 
             <div class="panel-footer command-strip" style="margin-top: auto; padding-top: 16px; display: flex; gap: 8px; align-items: center;">

@@ -1574,6 +1574,12 @@ button.tab .tab-close:hover { opacity: 1; }
   grid-column: 1 / -1;
   margin-top: 0 !important;
 }
+.connection-search-input {
+  padding-right: 30px !important;
+}
+.connection-search-input::-webkit-search-cancel-button {
+  display: none;
+}
 .panel-add-btn {
   background: var(--accent) !important;
   color: var(--accent-text) !important;

@@ -34,7 +34,7 @@ function shadowApp() {
     showConnectionManager: false,
     connectionFormSource: null, // 'sidebar' | 'manager'
     isFullscreen: false,
-    commandInput: '',
+    connectionQuery: '',
     terminalSearch: '',
     testMessage: '',
     testMessageType: 'info',
@@ -88,6 +88,16 @@ function shadowApp() {
 
     get activeEditorTab() {
       return this.editorTabs.find(tab => tab.id === this.activeEditorTabId) || null;
+    },
+
+    get filteredConnections() {
+      const query = this.connectionQuery.trim().toLocaleLowerCase();
+      if (!query) return this.connections;
+      return this.connections.filter(connection => {
+        const name = String(connection.name || '').toLocaleLowerCase();
+        const host = String(connection.host || '').toLocaleLowerCase();
+        return name.includes(query) || host.includes(query);
+      });
     },
 
     activeSessionType() {
@@ -1897,14 +1907,6 @@ function shadowApp() {
         this.uploading = false;
         input.value = '';
         setTimeout(() => { this.uploadProgress = 0; }, 400);
-      }
-    },
-
-    async sendCommandInput() {
-      if (!this.commandInput.trim() || !this.activeSessionId) return;
-      const command = this.commandInput;
-      if (await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: `${command}\r` } })) {
-        this.commandInput = '';
       }
     },
 
