@@ -369,6 +369,11 @@ function shadowApp() {
         }
       });
       document.addEventListener('keydown', (e) => {
+        if (this.isFullscreen && (e.key === 'Escape' || e.key === 'F11')) {
+          this.toggleFullscreen();
+          e.preventDefault();
+          return;
+        }
         if (!this.authenticated && !this.booting && !this.needsSetup) {
           const activeTag = document.activeElement?.tagName;
           const targetId = this.loginStep === 'password' ? 'term-login-password' : 'term-login-username';
@@ -1259,9 +1264,30 @@ function shadowApp() {
       this.terminalCopyViewer.visible = true;
       this.$nextTick(() => {
         const textarea = document.querySelector('.terminal-copy-viewer textarea');
-        textarea?.focus?.();
-        setTimeout(() => textarea?.focus?.(), 80);
+        if (textarea) {
+          textarea.focus();
+          textarea.select();
+        }
       });
+    },
+
+    selectAllCopyViewer() {
+      const textarea = document.querySelector('.terminal-copy-viewer textarea');
+      if (textarea) {
+        textarea.focus();
+        textarea.select();
+        try {
+          textarea.setSelectionRange(0, textarea.value.length);
+        } catch (_) {}
+      }
+    },
+
+    async copyAllFromViewer() {
+      const text = this.terminalCopyViewer.text;
+      if (!text) return;
+      const ok = await this.writeClipboardText(text);
+      this.testMessage = ok ? '已复制终端全部内容' : '已全选，请长按文本框复制';
+      this.testMessageType = ok ? 'success' : 'info';
     },
 
     closeTerminalCopyViewer() {
@@ -1445,6 +1471,9 @@ function shadowApp() {
         if (window.appMonacoInstance) {
           window.appMonacoInstance.dispose();
           window.appMonacoInstance = null;
+        }
+        if (this.isMobile) {
+          this.showMobileSftp = true;
         }
       } else {
         this.layoutEditor();

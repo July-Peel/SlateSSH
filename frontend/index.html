@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" sizes="180x180">
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260825_term_v5">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260825_term_v8">
 </head>
 <body class="term-body">
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-dark'">
@@ -160,24 +160,28 @@
               <!-- Monospace host table seamless with background -->
               <div class="launcher-list-wrap">
                 <div class="launcher-table-head">
-                  <span class="col-idx">#</span>
-                  <span class="col-type">TYPE</span>
-                  <span class="col-name">NAME</span>
-                  <span class="col-dest">TARGET HOST</span>
-                  <span class="col-act"></span>
+                  <div class="launcher-table-head-info">
+                    <span class="col-idx">#</span>
+                    <span class="col-type">TYPE</span>
+                    <span class="col-name">NAME</span>
+                    <span class="col-dest">TARGET HOST</span>
+                  </div>
+                  <span class="col-act" style="width: 190px;"></span>
                 </div>
                 <div class="launcher-table-rows">
                   <template x-for="(connection, idx) in filteredConnections" :key="connection.id">
                     <div class="launcher-row" @click="openSession(connection)">
-                      <span class="col-idx" x-text="'[' + (idx + 1) + ']'"></span>
-                      <span class="col-type"><span class="term-badge" x-text="connection.type || 'SSH'"></span></span>
-                      <span class="col-name"><strong x-text="connection.name"></strong></span>
-                      <span class="col-dest" x-text="(connection.username || 'root') + '@' + connection.host + ':' + connection.port"></span>
-                      <span class="col-act" @click.stop>
+                      <div class="launcher-row-info">
+                        <span class="col-idx" x-text="'[' + (idx + 1) + ']'"></span>
+                        <span class="col-type"><span class="term-badge" x-text="connection.type || 'SSH'"></span></span>
+                        <span class="col-name"><strong x-text="connection.name"></strong></span>
+                        <span class="col-dest" x-text="(connection.username || 'root') + '@' + connection.host + ':' + connection.port"></span>
+                      </div>
+                      <div class="col-act" @click.stop>
                         <button class="term-btn primary" @click="openSession(connection)">[ Connect ]</button>
                         <button class="term-btn" @click="testSavedConnection(connection.id)">[ Test ]</button>
                         <button class="term-btn" @click="editConnection(connection, 'manager')">[ Edit ]</button>
-                      </span>
+                      </div>
                     </div>
                   </template>
                   <div class="launcher-empty" x-show="!connections.length">
@@ -218,7 +222,8 @@
                       <span class="item-name" x-text="connection.name"></span>
                     </div>
                     <div class="connection-tools">
-                      <button class="term-btn-mini" @click.stop="editConnection(connection, 'sidebar')">[E]</button>
+                      <button @click.stop="testSavedConnection(connection.id)" class="term-btn-mini" title="Test Connection">[T]</button>
+                      <button @click.stop="editConnection(connection, 'sidebar')" class="term-btn-mini" title="Edit Connection">[E]</button>
                     </div>
                   </div>
                 </template>
@@ -226,7 +231,7 @@
                 <div class="empty-term" x-show="connections.length && !filteredConnections.length">-- No matches --</div>
               </div>
 
-              <!-- Bottom controls moved downward -->
+              <!-- Sidebar bottom collapse and manager controls -->
               <div class="connection-panel-bottom">
                 <button class="term-btn" @click="showConnectionManager = true">[ Manager ]</button>
                 <button class="term-btn" @click="toggleSidebarPanel()">[ &lt;&lt; Collapse ]</button>
@@ -253,31 +258,45 @@
                 </template>
                 <button class="tab-new" @click="showConnectionManager = true" title="New Session">[ + ]</button>
                 <div style="flex:1"></div>
+                <button x-show="isMobile" @click="showMobileSftp = true; rightTab = 'files'" class="term-btn-mini primary" title="Remote Files">[ Files ]</button>
+                <button x-show="isMobile" @click="showMobileStatus = true; rightTab = 'status'" class="term-btn-mini" title="System Telemetry">[ Stats ]</button>
                 <button x-show="!isMobile && !(showSftpWidget || showStatusWidget)" @click="toggleUtilityPanel()" class="term-btn-mini" title="Show Side Panel">[ Files &gt;&gt; ]</button>
               </div>
 
               <!-- Terminal Command Bar -->
               <div class="terminal-commandbar" x-show="activeSessionId">
-                <button class="term-btn" x-show="isMobile" @click="copyTerminalSelection()">[ Copy ]</button>
-                <button class="term-btn" x-show="isMobile" @click="mobileTerminalPaste()">[ Paste ]</button>
+                <button class="term-btn" @click="openTerminalCopyViewer()">[ Copy ]</button>
+                <button class="term-btn" @click="openTerminalPasteBox()">[ Paste ]</button>
                 <button class="term-btn" @click="clearActiveTerminal()">[ Clear ]</button>
-                <div class="terminal-search-box">
+                <button class="term-btn primary" x-show="isMobile" @click="showMobileSftp = true; rightTab = 'files'">[ Files ]</button>
+                <button class="term-btn" x-show="isMobile" @click="showMobileStatus = true; rightTab = 'status'">[ Stats ]</button>
+                <div class="terminal-search-box" x-show="!isMobile">
                   <span class="term-prompt">find:</span>
                   <input x-model="terminalSearch" @keydown.enter="searchTerminal()" placeholder="search terminal buffer..." class="term-input">
                 </div>
-                <button class="term-btn" @click="findPreviousTerminalResult()">[ &lt; Prev ]</button>
-                <button class="term-btn" @click="findNextTerminalResult()">[ Next &gt; ]</button>
+                <button class="term-btn" x-show="!isMobile" @click="findPreviousTerminalResult()">[ &lt; Prev ]</button>
+                <button class="term-btn" x-show="!isMobile" @click="findNextTerminalResult()">[ Next &gt; ]</button>
                 <button @click="toggleFullscreen()" class="term-btn" x-text="isFullscreen ? '[ Window ]' : '[ Fullscreen ]'"></button>
               </div>
 
               <!-- Terminal viewport stage -->
               <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
+                <!-- Floating Exit Fullscreen Button -->
+                <button x-show="isFullscreen" @click="toggleFullscreen()" class="term-fullscreen-exit-btn" title="Exit Fullscreen (ESC)">
+                  [ Exit Fullscreen X ]
+                </button>
+                
+                <!-- Terminal Output Buffer Fullscreen Copy View -->
                 <div x-show="terminalCopyViewer.visible" class="terminal-copy-viewer" @click.stop>
                   <div class="terminal-copy-head">
-                    <strong>=== TERMINAL OUTPUT BUFFER ===</strong>
-                    <button class="term-btn" @click="closeTerminalCopyViewer()">[ Close ]</button>
+                    <span class="copy-head-title">=== [ TERMINAL TEXT BUFFER ] ===</span>
+                    <div class="copy-head-actions">
+                      <button class="term-btn-mini" @click="selectAllCopyViewer()">[ Select All ]</button>
+                      <button class="term-btn-mini primary" @click="copyAllFromViewer()">[ Copy ]</button>
+                      <button class="term-btn-mini" @click="closeTerminalCopyViewer()">[ Close X ]</button>
+                    </div>
                   </div>
-                  <textarea readonly x-model="terminalCopyViewer.text" spellcheck="false" class="term-textarea"></textarea>
+                  <textarea readonly x-model="terminalCopyViewer.text" spellcheck="false" class="term-copy-textarea"></textarea>
                 </div>
 
                 <div x-show="terminalPasteBox.visible" class="terminal-paste-popover" @click.stop>
@@ -303,8 +322,9 @@
 
               <!-- Mobile command helper bar -->
               <div class="terminal-mobile-bar" x-show="isMobile && activeSessionId">
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('copy')">[Copy]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('paste')">[Paste]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="openTerminalCopyViewer()">[Copy]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="openTerminalPasteBox()">[Paste]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="showMobileSftp = true; rightTab = 'files'">[Files]</button>
                 <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('ctrl')" :class="ctrlKeyActive ? 'active' : ''">[Ctrl]</button>
                 <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b')">[Esc]</button>
                 <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x09')">[Tab]</button>
@@ -317,9 +337,8 @@
                 <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '|')">[|]</button>
               </div>
             </section>
-
             <!-- RIGHT PANEL: SFTP & Server Status -->
-            <aside class="side-panel" x-show="!isMobile ? (showSftpWidget || showStatusWidget) : true" :class="isMobile ? (showMobileStatus ? 'mobile-drawer right open' : 'mobile-drawer right') : ''">
+            <aside class="side-panel" x-show="!isMobile ? (showSftpWidget || showStatusWidget) : false">
               <div class="side-tabs">
                 <button class="term-btn" :class="rightTab === 'files' ? 'active' : ''" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false">[ FILES ]</button>
                 <button class="term-btn" :class="rightTab === 'status' ? 'active' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false">[ STATS ]</button>
@@ -402,6 +421,90 @@
             </aside>
           </div>
         </template>
+
+        <!-- Mobile SFTP Modal Dialog -->
+        <div x-show="showMobileSftp" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileSftp = false">
+          <div class="mobile-term-modal">
+            <div class="modal-head">
+              <span class="modal-title">=== [ REMOTE SFTP FILES ] ===</span>
+              <button @click="showMobileSftp = false" class="term-btn-mini">[ Close X ]</button>
+            </div>
+            
+            <div class="mobile-modal-content">
+              <div class="path-bar-container" @click.away="showPathDropdown = false">
+                <div class="path-input-wrapper">
+                  <span class="term-prompt">pwd:</span>
+                  <input type="text" x-model="pathInput" @focus="showPathDropdown = true; activeSuggestionIndex = -1" @keydown.enter.prevent="selectSuggestionOrSubmit()" class="term-input" placeholder="/path/to/remote...">
+                  <button @click="submitPath()" class="term-btn-mini">[ Go ]</button>
+                </div>
+              </div>
+
+              <div class="file-actions">
+                <button class="term-btn" @click="goParentDir()" title="Parent Directory">[ .. UP ]</button>
+                <button class="term-btn" @click="refreshFiles()" title="Refresh">[ Refresh ]</button>
+                <button class="term-btn" @click="promptMkdir()" title="Create Directory">[ +DIR ]</button>
+                <button class="term-btn" @click="promptWriteFile()" title="Create File">[ +FILE ]</button>
+                <button class="term-btn" @click="pasteClipboard()" title="Paste">[ Paste ]</button>
+                <button class="term-btn" @click="triggerUpload()" title="Upload">[ Upload ]</button>
+              </div>
+
+              <div class="file-list mobile-file-list">
+                <template x-if="!activeSessionId">
+                  <div class="empty-term">-- Connect SSH session to view files --</div>
+                </template>
+                <template x-for="entry in files" :key="entry.filename">
+                  <div class="file-item" @contextmenu="showContextMenu($event, entry)" :title="entry.filename + (entry.isDir ? '/' : '')">
+                    <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : (readFile(entry.filename), showMobileSftp = false)">
+                      <span :class="getFileIconClass(entry)" x-text="getFileIcon(entry)"></span>
+                      <span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span>
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mobile System Stats Modal Dialog -->
+        <div x-show="showMobileStatus" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileStatus = false">
+          <div class="mobile-term-modal">
+            <div class="modal-head">
+              <span class="modal-title">=== [ SYSTEM TELEMETRY ] ===</span>
+              <button @click="showMobileStatus = false" class="term-btn-mini">[ Close X ]</button>
+            </div>
+            <div class="mobile-modal-content">
+              <div class="status-box">
+                <template x-if="activeStatus">
+                  <div class="status-terminal-list">
+                    <div class="status-term-row"><span class="st-label">OS:</span><strong class="st-val" x-text="activeStatus.osName || '-'"></strong></div>
+                    <div class="status-term-row"><span class="st-label">IP:</span><strong class="st-val" x-text="activeStatus.serverIp || '-'"></strong></div>
+                    
+                    <div class="meter-block">
+                      <div class="meter-head"><span>CPU USAGE:</span> <strong x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></strong></div>
+                      <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.cpuPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.cpuPercent || 0)/10)))) + ']'"></div>
+                    </div>
+
+                    <div class="meter-block">
+                      <div class="meter-head"><span>MEM USAGE:</span> <strong x-text="Math.round(activeStatus.memPercent || 0) + '%'"></strong></div>
+                      <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.memPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.memPercent || 0)/10)))) + ']'"></div>
+                    </div>
+
+                    <div class="meter-block">
+                      <div class="meter-head"><span>DISK USAGE:</span> <strong x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></strong></div>
+                      <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.diskPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.diskPercent || 0)/10)))) + ']'"></div>
+                    </div>
+
+                    <div class="status-term-row"><span class="st-label">RX (DOWN):</span><strong class="st-val" x-text="bytes(activeStatus.netRxRate)"></strong></div>
+                    <div class="status-term-row"><span class="st-label">TX (UP):</span><strong class="st-val" x-text="bytes(activeStatus.netTxRate)"></strong></div>
+                  </div>
+                </template>
+                <template x-if="!activeStatus">
+                  <div class="empty-term">-- System telemetry waiting for session active --</div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- Connection Manager Modal -->
         <div x-show="showConnectionManager" class="modal-backdrop" @click.self="closeConnectionManager()">
@@ -529,15 +632,15 @@
             <div class="editor-head" @pointerdown="startEditorDrag($event)" @dblclick="toggleEditorMaximize()">
               <div class="editor-title">
                 <span class="editor-prompt">EDIT:</span>
-                <strong x-text="activeEditorTab?.name || ''"></strong>
-                <small x-text="'(' + (activeEditorTab?.path || '') + ')'"></small>
+                <strong x-text="activeEditorTab?.name || ''" :title="activeEditorTab?.path || ''"></strong>
+                <small x-show="!isMobile" x-text="'(' + (activeEditorTab?.path || '') + ')'"></small>
               </div>
               <div class="editor-actions">
                 <button class="term-btn primary editor-save-btn" @click.stop="saveEditor()" :disabled="editorSaveFeedback.state === 'saving'">
                   <span x-text="editorSaveFeedback.state === 'saved' ? '[ Saved ✓ ]' : (editorSaveFeedback.state === 'saving' ? '[ Saving... ]' : '[ Save ]')"></span>
                 </button>
-                <button class="term-btn" @click.stop="minimizeEditor()">[ Min ]</button>
-                <button class="term-btn" @click.stop="toggleEditorMaximize()" x-text="editorWindow.maximized ? '[ Restore ]' : '[ Max ]'"></button>
+                <button class="term-btn" x-show="!isMobile" @click.stop="minimizeEditor()">[ Min ]</button>
+                <button class="term-btn" x-show="!isMobile" @click.stop="toggleEditorMaximize()" x-text="editorWindow.maximized ? '[ Restore ]' : '[ Max ]'"></button>
                 <button class="term-btn" @click.stop="closeEditorTab(activeEditorTabId)">[ Close X ]</button>
               </div>
             </div>
@@ -587,7 +690,7 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/app.js?v=20260825_term_v2"></script>
+  <script src="/assets/js/app.js?v=20260825_term_v5"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>
