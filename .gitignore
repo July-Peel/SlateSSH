@@ -3,7 +3,10 @@ build/
 *.dll
 *.so
 *.dylib
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/extensions.json
 .claude/
 data/
 .gocache/

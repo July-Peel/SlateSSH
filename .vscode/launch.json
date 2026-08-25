@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "运行 SlateSSH",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/backend/cmd/slatessh",
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "CGO_ENABLED": "1",
+        "CC": "C:\\msys64\\ucrt64\\bin\\gcc.exe",
+        "PATH": "C:\\msys64\\ucrt64\\bin;${env:PATH}"
+      },
+      "console": "integratedTerminal"
+    }
+  ]
+}

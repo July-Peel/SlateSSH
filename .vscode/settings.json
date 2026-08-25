@@ -1,0 +1,6 @@
+{
+  "go.toolsEnvVars": {
+    "CGO_ENABLED": "1",
+    "CC": "C:\\msys64\\ucrt64\\bin\\gcc.exe"
+  }
+}
