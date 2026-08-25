@@ -20,7 +20,7 @@ function shadowApp() {
     activePath: '.',
     files: [],
     statuses: {},
-    theme: localStorage.getItem('slatessh-theme') || 'light',
+    theme: localStorage.getItem('slatessh-theme') || 'dark',
     rightTab: 'files',
     showSidebar: true,
     showStatusWidget: true,
@@ -49,6 +49,7 @@ function shadowApp() {
     terminalPasteBox: { visible: false, text: '' },
     terminalCopyViewer: { visible: false, text: '' },
     editorSaveFeedback: { state: 'idle', path: '', timer: null },
+    loginStep: 'username', // 'username' | 'password'
     editorWindow: {
       x: 420,
       y: 90,
@@ -81,6 +82,41 @@ function shadowApp() {
     showMobileStatus: false,
     showMobileMenu: false,
     ctrlKeyActive: false,
+
+    focusLoginInput() {
+      if (this.authenticated || this.booting || this.needsSetup) return;
+      const targetId = this.loginStep === 'password' ? 'term-login-password' : 'term-login-username';
+      const doFocus = () => {
+        const el = document.getElementById(targetId);
+        if (el) {
+          el.focus();
+          const len = el.value ? el.value.length : 0;
+          if (typeof el.setSelectionRange === 'function') {
+            try { el.setSelectionRange(len, len); } catch (_) {}
+          }
+        }
+      };
+      this.$nextTick(doFocus);
+      setTimeout(doFocus, 30);
+      setTimeout(doFocus, 120);
+    },
+
+    submitUsername() {
+      if (!this.loginForm.username || !this.loginForm.username.trim()) {
+        this.error = 'login as: username required';
+        this.focusLoginInput();
+        return;
+      }
+      this.error = '';
+      this.loginStep = 'password';
+      this.focusLoginInput();
+    },
+
+    backToUsername() {
+      this.loginStep = 'username';
+      this.error = '';
+      this.focusLoginInput();
+    },
 
     get activeStatus() {
       return this.activeSessionId ? this.statuses[this.activeSessionId] : null;
@@ -243,9 +279,7 @@ function shadowApp() {
           }
         };
         window.visualViewport.addEventListener('resize', updateVV);
-        // iOS Safari fires scroll events when keyboard pushes the visual viewport
         window.visualViewport.addEventListener('scroll', () => {
-          // Reset any page scroll caused by keyboard appearance
           if (window.scrollY !== 0) window.scrollTo(0, 0);
           updateVV();
         });
@@ -260,7 +294,6 @@ function shadowApp() {
         if (isInput) {
           clearTimeout(this._focusTimer);
           this._focusTimer = setTimeout(() => {
-            // Reset scroll caused by Safari auto-scroll-to-focused-element
             window.scrollTo(0, 0);
             if (window.visualViewport) {
               document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
@@ -271,7 +304,6 @@ function shadowApp() {
 
       // Prevent page bounce / elastic scrolling on iOS Safari
       document.addEventListener('touchmove', (e) => {
-        // On auth/setup pages, block all scrolling to prevent flicker
         if (!this.authenticated) {
           if (e.cancelable) e.preventDefault();
           return;
@@ -327,12 +359,38 @@ function shadowApp() {
         this.dragEditor(event);
         this.resizeEditor(event);
       });
+      document.addEventListener('click', (e) => {
+        this.hideContextMenu();
+        if (!this.authenticated && !this.booting && !this.needsSetup) {
+          const target = e.target;
+          if (target && target.tagName !== 'BUTTON' && target.type !== 'checkbox' && !target.closest('button') && !target.closest('label')) {
+            this.focusLoginInput();
+          }
+        }
+      });
+      document.addEventListener('keydown', (e) => {
+        if (!this.authenticated && !this.booting && !this.needsSetup) {
+          const activeTag = document.activeElement?.tagName;
+          const targetId = this.loginStep === 'password' ? 'term-login-password' : 'term-login-username';
+          const inputEl = document.getElementById(targetId);
+          if (inputEl && document.activeElement !== inputEl && activeTag !== 'INPUT') {
+            if (e.key !== 'Tab' && e.key !== 'F12' && e.key !== 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              inputEl.focus();
+            }
+          }
+        }
+      });
+      document.addEventListener('mousemove', (event) => this.dragEditor(event));
+      document.addEventListener('mouseup', () => this.stopEditorDrag());
+      document.addEventListener('pointermove', (event) => {
+        this.dragEditor(event);
+        this.resizeEditor(event);
+      });
       document.addEventListener('pointerup', () => {
         this.stopEditorDrag();
         this.stopEditorResize();
       });
 
-      // Fullscreen listener removed per user request (fallback to CSS fullscreen)
       try {
         const needsSetupResp = await fetch('/api/v1/auth/needs-setup');
         this.needsSetup = (await needsSetupResp.json()).needsSetup;
@@ -349,6 +407,9 @@ function shadowApp() {
         this.error = error.message || String(error);
       } finally {
         this.booting = false;
+        if (!this.authenticated) {
+          this.focusLoginInput();
+        }
       }
     },
 
@@ -356,20 +417,39 @@ function shadowApp() {
       this.error = '';
       const resp = await fetch('/api/v1/auth/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.setupForm) });
       const data = await resp.json();
-      if (!resp.ok) { this.error = data.message || '初始化失败'; return; }
+      if (!resp.ok) { this.error = data.message || 'Initialization failed / 初始化失败'; return; }
       this.needsSetup = false;
     },
 
     async login() {
       this.error = '';
-      const resp = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.loginForm) });
-      const data = await resp.json();
-      if (!resp.ok) { this.error = data.message || '登录失败'; return; }
-      this.authenticated = true;
-      this.currentUser = data.user;
-      await this.loadSettings();
-      await this.refreshConnections();
-      this.connectSocket().catch(() => {});
+      if (!this.loginForm.username || !this.loginForm.username.trim()) {
+        this.loginStep = 'username';
+        this.error = 'login as: username required';
+        this.focusLoginInput();
+        return;
+      }
+      try {
+        const resp = await fetch('/api/v1/auth/login', { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(this.loginForm) 
+        });
+        const data = await resp.json();
+        if (!resp.ok) { 
+          this.error = data.message || 'Access denied / 认证失败'; 
+          this.loginForm.password = '';
+          this.focusLoginInput();
+          return; 
+        }
+        this.authenticated = true;
+        this.currentUser = data.user;
+        await this.loadSettings();
+        await this.refreshConnections();
+        this.connectSocket().catch(() => {});
+      } catch (err) {
+        this.error = err.message || 'Network communication error';
+      }
     },
 
     async logout() {
@@ -414,7 +494,6 @@ function shadowApp() {
       const data = await resp.json();
       this.connections = data.map(c => ({ ...c, connecting: false }));
     },
-
 
     newConnection(type = 'SSH', source = 'sidebar') {
       this.connectionForm = { id: null, name: '', type, host: '', port: type === 'RDP' ? 3389 : 22, username: type === 'RDP' ? '' : 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' };
@@ -491,7 +570,6 @@ function shadowApp() {
 
     async testConnection() {
       this.testResultModal = { visible: true, title: '测试连接', message: '正在测试当前信息，请稍候...', type: 'info' };
-      // Editing an existing connection: if password/key left blank, use DB-stored secrets via saved-test API.
       const form = this.connectionForm || {};
       const isSaved = !!form.id;
       const secretsMissing = form.auth_method === 'key'
@@ -501,7 +579,6 @@ function shadowApp() {
       if (isSaved && secretsMissing) {
         resp = await fetch(`/api/v1/connections/${form.id}/test`, { method: 'POST' });
       } else {
-        // Always include id so backend can fill blank secrets from DB when present.
         resp = await fetch('/api/v1/connections/test-unsaved', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -857,13 +934,15 @@ function shadowApp() {
       const isMobileDevice = this.isMobile;
       const term = new window.Terminal({ 
         cursorBlink: true, 
+        cursorStyle: 'underline',
         fontSize: isMobileDevice ? 12 : 14, 
         fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace',
         theme: { 
-          background: '#00000000',
+          background: '#090a0f',
           foreground: '#e6edf3',
-          cursor: '#e6edf3',
-          black: '#0d1117',
+          cursor: '#5af78e',
+          cursorAccent: '#090a0f',
+          black: '#090a0f',
           red: '#ff7b72',
           green: '#3fb950',
           yellow: '#d29922',
@@ -871,14 +950,14 @@ function shadowApp() {
           magenta: '#bc8cff',
           cyan: '#39c5cf',
           white: '#b1bac4',
-          brightBlack: '#8b949e',
-          brightRed: '#ff9e96',
+          brightBlack: '#484f58',
+          brightRed: '#ffa198',
           brightGreen: '#56d364',
           brightYellow: '#e3b341',
           brightBlue: '#79c0ff',
           brightMagenta: '#d2a8ff',
           brightCyan: '#56d4dd',
-          brightWhite: '#ffffff'
+          brightWhite: '#f0f6fc'
         }, 
         convertEol: true, 
         scrollback: 5000,
@@ -912,7 +991,7 @@ function shadowApp() {
         clearTimeout(this._terminalFocusTimer);
         this._terminalFocusTimer = setTimeout(() => this.refocusTerminal(true), 40);
       });
-      // Selection auto-copy: cache selection while dragging, copy on mouseup in the same gesture.
+      
       let selecting = false;
       let selectMoved = false;
       let selectStartX = 0;
@@ -930,9 +1009,7 @@ function shadowApp() {
         if (!this.terminals[id]) return false;
         const text = (term.getSelection && term.getSelection()) || pendingSelection || '';
         if (!text) return false;
-        // Sync first — must stay in the user-gesture stack (HTTP / permission issues).
         if (this.copyTextViaExecCommand(text)) return true;
-        // Same-turn async Clipboard API (do not await before deciding / falling back).
         try {
           if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
             void navigator.clipboard.writeText(text);
@@ -943,19 +1020,15 @@ function shadowApp() {
       };
       const onDocMouseUp = (event) => {
         if (!selecting) return;
-        // Some browsers report buttons bitmask more reliably than button on mouseup
         if (typeof event.button === 'number' && event.button !== 0) return;
         selecting = false;
         document.removeEventListener('mouseup', onDocMouseUp, true);
         document.removeEventListener('mousemove', onDocMouseMove, true);
         if (!selectMoved) return;
-        // Immediate attempt (same user-gesture turn)
         if (copyTerminalDragSelection()) {
           pendingSelection = '';
           return;
         }
-        // xterm may finalize selection slightly after mouseup — retry quickly while
-        // still using sync execCommand path via preferSync.
         requestAnimationFrame(() => {
           if (copyTerminalDragSelection()) {
             pendingSelection = '';
@@ -980,12 +1053,10 @@ function shadowApp() {
         selectStartX = event.clientX;
         selectStartY = event.clientY;
         pendingSelection = '';
-        // Capture phase so we still see mouseup even if xterm/stopPropagation interferes
         document.addEventListener('mousemove', onDocMouseMove, true);
         document.addEventListener('mouseup', onDocMouseUp, true);
       });
 
-      // Right-click paste: normalize line endings via term.paste (same as Ctrl+V)
       term.element?.addEventListener('contextmenu', async (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -995,7 +1066,6 @@ function shadowApp() {
             this.pasteTextToSession(id, text);
           }
         } catch (_) {
-          // Clipboard permission denied: fall back to paste box on desktop too
           if (!this.isMobile) {
             this.openTerminalPasteBox();
           }
@@ -1085,8 +1155,6 @@ function shadowApp() {
       this.searchAddons[this.activeSessionId]?.findPrevious?.(this.terminalSearch, { caseSensitive: false });
     },
 
-
-    /** Normalize clipboard text for PTY paste: CRLF/CR/LF -> single CR (Enter). */
     normalizeTerminalPasteText(text) {
       return String(text ?? '')
         .replace(/\r\n/g, '\n')
@@ -1094,10 +1162,6 @@ function shadowApp() {
         .replace(/\n/g, '\r');
     },
 
-    /**
-     * Paste into a session the same way a local terminal would.
-     * Prefer xterm.paste() so bracketed-paste mode is honored and newlines stay single.
-     */
     pasteTextToSession(sessionId, text) {
       if (!sessionId || text == null || text === '') return;
       const term = this.terminals[sessionId];
@@ -1105,22 +1169,18 @@ function shadowApp() {
         try {
           term.paste(String(text));
           return;
-        } catch (_) {
-          // fall through
-        }
+        } catch (_) {}
       }
       const normalized = this.normalizeTerminalPasteText(text);
       this.sendSocket({ type: 'ssh:input', sessionId, payload: { data: normalized } });
     },
 
-    /** Synchronous execCommand copy — keeps multi-line text and works inside user gestures. */
     copyTextViaExecCommand(value) {
       let ta;
       try {
         ta = document.createElement('textarea');
         ta.value = value;
         ta.setAttribute('readonly', '');
-        // Must be in-DOM and selectable; opacity 0 is fine, display:none is not.
         ta.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;padding:0;border:0;opacity:0;z-index:2147483647;';
         document.body.appendChild(ta);
         const selection = document.getSelection();
@@ -1141,11 +1201,6 @@ function shadowApp() {
       }
     },
 
-    /**
-     * Robust clipboard write.
-     * preferSync: true — try execCommand first (required for drag-select auto-copy;
-     * async Clipboard API often fails after await and breaks the user-gesture chain).
-     */
     async writeClipboardText(text, options = {}) {
       if (text == null || text === '') return false;
       const value = String(text);
@@ -1162,18 +1217,16 @@ function shadowApp() {
         return false;
       }
 
-      // Default: async Clipboard API first (better for large text / explicit copy buttons)
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
         try {
           await navigator.clipboard.writeText(value);
           return true;
-        } catch (_) {
-          // fall through — only useful if still in gesture; sync path is best-effort
-        }
+        } catch (_) {}
       }
 
       return this.copyTextViaExecCommand(value);
     },
+
     async copyTerminalSelection() {
       const term = this.terminals[this.activeSessionId];
       const value = term?.getSelection?.() || this.getTerminalAllText(this.activeSessionId);
@@ -1444,16 +1497,15 @@ function shadowApp() {
         const container = document.getElementById('monaco-editor-container');
         if (!container || !this.activeEditorTab) return;
 
-        // Register custom glassmorphic themes to seamlessly integrate with our CSS
         if (!window.monacoThemesDefined) {
           window.monaco.editor.defineTheme('slatessh-dark', {
             base: 'vs-dark',
             inherit: true,
             rules: [],
             colors: {
-              'editor.background': '#1c1c1c',
-              'editor.lineHighlightBackground': '#2d2d2d',
-              'editorCursor.foreground': '#60CDFF',
+              'editor.background': '#0a0c10',
+              'editor.lineHighlightBackground': '#161b22',
+              'editorCursor.foreground': '#3fb950',
               'editor.selectionBackground': '#264F78',
               'editor.inactiveSelectionBackground': '#264F7844'
             }
@@ -1463,11 +1515,11 @@ function shadowApp() {
             inherit: true,
             rules: [],
             colors: {
-              'editor.background': '#ffffff',
-              'editor.lineHighlightBackground': '#f3f3f3',
-              'editorCursor.foreground': '#005fb8',
-              'editor.selectionBackground': '#ADD6FF',
-              'editor.inactiveSelectionBackground': '#ADD6FF66'
+              'editor.background': '#0a0c10',
+              'editor.lineHighlightBackground': '#161b22',
+              'editorCursor.foreground': '#3fb950',
+              'editor.selectionBackground': '#264F78',
+              'editor.inactiveSelectionBackground': '#264F7844'
             }
           });
           window.monacoThemesDefined = true;
@@ -1480,11 +1532,11 @@ function shadowApp() {
         window.appMonacoInstance = window.monaco.editor.create(container, {
           value: this.activeEditorTab.content || '',
           language: this.getMonacoLanguage(this.activeEditorTab.name),
-          theme: this.theme === 'dark' ? 'slatessh-dark' : 'slatessh-light',
+          theme: 'slatessh-dark',
           automaticLayout: true,
           minimap: { enabled: false },
           fontSize: 14,
-          fontFamily: '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace'
+          fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace'
         });
         window.appMonacoInstance.onDidChangeModelContent(() => {
           if (this.activeEditorTab && !this.isMonacoUpdating) {
@@ -1497,7 +1549,6 @@ function shadowApp() {
     },
 
     updateMonacoEditor() {
-      const currentTheme = this.theme;
       const tab = this.activeEditorTab;
       const tabContent = tab?.content;
       const tabName = tab?.name;
@@ -1511,7 +1562,7 @@ function shadowApp() {
         }
         const lang = this.getMonacoLanguage(tabName);
         window.monaco.editor.setModelLanguage(window.appMonacoInstance.getModel(), lang);
-        window.monaco.editor.setTheme(currentTheme === 'dark' ? 'slatessh-dark' : 'slatessh-light');
+        window.monaco.editor.setTheme('slatessh-dark');
         this.isMonacoUpdating = false;
       }
     },
@@ -1533,10 +1584,10 @@ function shadowApp() {
     editorWindowStyle() {
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
       if (this.editorWindow.maximized) {
-        const left = 12;
-        const top = 12;
-        const width = Math.max(320, window.innerWidth - 24);
-        const height = Math.max(200, viewportHeight - 24);
+        const left = 0;
+        const top = 0;
+        const width = window.innerWidth;
+        const height = viewportHeight;
         return `left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
       }
       if (this.editorWindow.minimized) {
@@ -1721,7 +1772,6 @@ function shadowApp() {
       const tab = this.activeEditorTab;
       if (!tab || !this.activeSessionId) return;
       if (this.editorSaveFeedback.state === 'saving') return;
-      // Keep monaco buffer in sync before write
       if (window.appMonacoInstance && !this.isMonacoUpdating) {
         try { tab.content = window.appMonacoInstance.getValue(); } catch (_) {}
       }
@@ -1750,7 +1800,6 @@ function shadowApp() {
           this.editorSaveFeedback.timer = null;
         }, 1800);
       } else if (state === 'saving') {
-        // Safety timeout if server never replies
         this.editorSaveFeedback.timer = setTimeout(() => {
           if (this.editorSaveFeedback.state === 'saving') {
             this.editorSaveFeedback.state = 'idle';
@@ -1764,7 +1813,6 @@ function shadowApp() {
     playEditorSaveSuccess(path = '') {
       const activePath = this.activeEditorTab?.path || '';
       const feedbackPath = this.editorSaveFeedback.path || '';
-      // Show animation when the saved path matches open editor, or when we were waiting on a save
       const isEditorSave =
         (activePath && path && activePath === path) ||
         (this.editorSaveFeedback.state === 'saving' && (!feedbackPath || !path || feedbackPath === path)) ||
@@ -1910,7 +1958,6 @@ function shadowApp() {
       }
     },
 
-    // Re-focus terminal after mobile keyboard button taps to keep iOS keyboard open
     refocusTerminal(force = false) {
       if (!this.isMobile || !this.activeSessionId || !this.terminals[this.activeSessionId] || this.terminalPasteBox.visible) return;
       const focus = () => {
@@ -1956,7 +2003,6 @@ function shadowApp() {
       this.openTerminalCopyViewer();
     },
 
-
     async sendQuick(command) {
       if (!this.activeSessionId) return;
       const noReturn = ['\x03', '\x04', '\x1b', '\x09', '\x1b[A', '\x1b[B', '\x1b[C', '\x1b[D'];
@@ -1967,7 +2013,6 @@ function shadowApp() {
       } else {
         await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: command } });
       }
-      // Keep keyboard open on mobile after shortcut key taps
       this.refocusTerminal(true);
     },
 
@@ -1996,15 +2041,18 @@ function shadowApp() {
     },
 
     getFileIcon(entry) {
-      return entry.isDir ? 'folder' : 'description';
+      if (entry.isDir) return '[DIR]';
+      const parts = (entry.filename || '').split('.');
+      if (parts.length > 1) {
+        const ext = parts.pop().toUpperCase();
+        if (ext && ext.length <= 4) return `[${ext}]`;
+      }
+      return '[FILE]';
     },
 
     getFileIconClass(entry) {
-      return entry.isDir ? 'file-icon folder-type' : 'file-icon file-type';
+      return entry.isDir ? 'file-badge dir-badge' : 'file-badge';
     }
   };
 }
 window.shadowApp = shadowApp;
-
-
-

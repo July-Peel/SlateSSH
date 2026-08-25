@@ -6,8 +6,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#f7f8fc">
-  <title>SlateSSH</title>
+  <meta name="theme-color" content="#090a0f">
+  <title>SlateSSH // Terminal Console</title>
   <link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/assets/icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="icon" href="/assets/icons/favicon-16.png" type="image/png" sizes="16x16">
@@ -15,371 +15,530 @@
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" sizes="180x180">
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260825_nova_ui_connectionlist">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260825_term_v5">
 </head>
-<body>
-  <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-light'">
+<body class="term-body">
+  <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-dark'">
+    
+    <!-- Booting screen -->
     <template x-if="booting">
-      <div class="auth-page"><div class="boot-brand">SlateSSH</div></div>
+      <div class="auth-page term-page">
+        <pre class="term-ascii-banner">
+  ____  _       _       ____ ____  _   _ 
+ / ___|| | __ _| |_ ___/ ___/ ___|| | | |
+ \___ \| |/ _` | __/ _ \___ \___ \| |_| |
+  ___) | | (_| | ||  __/___) |__) |  _  |
+ |____/|_|\__,_|\__\___|____/____/|_| |_|
+</pre>
+        <div class="term-boot-line">
+          <span class="term-prompt">system:</span> Initializing SlateSSH secure terminal gateway...<span class="term-cursor">_</span>
+        </div>
+      </div>
     </template>
 
+    <!-- First time setup screen -->
     <template x-if="!booting && needsSetup">
-      <div class="auth-page">
-        <form @submit.prevent="setup()" class="auth-card">
-          <h1>初始化管理员</h1>
-          <input x-model="setupForm.username" autocomplete="username" placeholder="用户名">
-          <input x-model="setupForm.password" type="password" autocomplete="new-password" placeholder="密码">
-          <input x-model="setupForm.confirmPassword" type="password" autocomplete="new-password" placeholder="确认密码">
-          <p class="message error" x-text="error"></p>
-          <button class="primary">初始化</button>
+      <div class="auth-page term-page">
+        <pre class="term-ascii-banner">
+  ____  _       _       ____ ____  _   _ 
+ / ___|| | __ _| |_ ___/ ___/ ___|| | | |
+ \___ \| |/ _` | __/ _ \___ \___ \| |_| |
+  ___) | | (_| | ||  __/___) |__) |  _  |
+ |____/|_|\__,_|\__\___|____/____/|_| |_|
+</pre>
+        <div class="term-subbanner">&gt;&gt;&gt; SlateSSH Initial Setup: Create Administrator &lt;&lt;&lt;</div>
+        <form @submit.prevent="setup()" class="term-auth-form">
+          <div class="term-prompt-row">
+            <span class="term-prompt">create admin username:</span>
+            <input x-model="setupForm.username" autocomplete="username" class="term-input" placeholder="admin" autofocus required>
+          </div>
+          <div class="term-prompt-row">
+            <span class="term-prompt">enter new password:</span>
+            <input x-model="setupForm.password" type="password" autocomplete="new-password" class="term-input" placeholder="••••••••" required>
+          </div>
+          <div class="term-prompt-row">
+            <span class="term-prompt">confirm password:</span>
+            <input x-model="setupForm.confirmPassword" type="password" autocomplete="new-password" class="term-input" placeholder="••••••••" required>
+          </div>
+          <p class="term-msg error" x-show="error" x-text="error"></p>
+          <div class="term-form-actions">
+            <button class="term-btn primary" type="submit">[ Execute Setup ]</button>
+          </div>
         </form>
       </div>
     </template>
 
+    <!-- Linux SSH login screen -->
     <template x-if="!booting && !needsSetup && !authenticated">
-      <div class="auth-page">
-        <form @submit.prevent="login()" class="auth-card">
-          <h1>SlateSSH</h1>
-          <input x-model="loginForm.username" autocomplete="username" placeholder="用户名">
-          <input x-model="loginForm.password" type="password" autocomplete="current-password" placeholder="密码">
-          <label class="check-row"><input type="checkbox" x-model="loginForm.rememberMe">记住我</label>
-          <p class="message error" x-text="error"></p>
-          <button class="primary">登录</button>
-        </form>
-      </div>
-    </template>
+      <div class="auth-page term-page" x-init="focusLoginInput()" @click="focusLoginInput()">
+        <pre class="term-ascii-banner">
+  ____  _       _       ____ ____  _   _ 
+ / ___|| | __ _| |_ ___/ ___/ ___|| | | |
+ \___ \| |/ _` | __/ _ \___ \___ \| |_| |
+  ___) | | (_| | ||  __/___) |__) |  _  |
+ |____/|_|\__,_|\__\___|____/____/|_| |_|
+</pre>
+        <div class="term-motd">
+          SlateSSH Terminal Gateway (SSH/SFTP/RDP v1.0.0)<br>
+          Type username and password to establish authorized session.
+        </div>
 
-    <template x-if="!booting && authenticated">
-      <div class="workspace">
-        <header class="topbar">
-          <div class="topbar-actions" style="justify-content: flex-start; flex: 1;">
-            <button @click="isMobile ? showMobileMenu = !showMobileMenu : toggleSidebarPanel()" class="icon-btn topbar-shortcut" :class="!isMobile && showSidebar ? 'active' : ''" :title="showSidebar ? '收起 SSH 管理' : '展开 SSH 管理'" aria-label="切换 SSH 管理面板"><span class="material-symbols-rounded">menu</span></button>
-            <div class="window-icon" style="margin-left: 4px; color: var(--accent);"><span class="material-symbols-rounded" style="font-size: 20px;">terminal</span></div>
-            <div class="brand" style="margin-left: 6px;">SlateSSH</div>
-          </div>
-          <div class="topbar-actions">
-            <button x-show="isMobile" @click="showMobileStatus = !showMobileStatus" class="icon-btn topbar-shortcut mobile-files-toggle" :class="showMobileStatus ? 'active' : ''" title="文件与状态" aria-label="打开文件与状态面板"><span class="material-symbols-rounded">folder</span></button>
-            <button x-show="!isMobile" @click="toggleUtilityPanel()" class="icon-btn topbar-shortcut" :class="(showSftpWidget || showStatusWidget) ? 'active' : ''" :title="(showSftpWidget || showStatusWidget) ? '收起文件面板' : '展开文件面板'" aria-label="切换文件和状态面板"><span class="material-symbols-rounded">dock_to_left</span></button>
-            <button @click="showConnectionManager = true" class="topbar-shortcut" style="display:none;"><span class="material-symbols-rounded" style="font-size:18px;">dns</span></button>
-            <div class="user-avatar" x-text="(currentUser?.username || '?')[0]" style="display:none;"></div>
-          </div>
-        </header>
-
-        <div class="drawer-overlay" x-show="isMobile && (showMobileMenu || showMobileSftp || showMobileStatus)" @click="showMobileMenu = false; showMobileSftp = false; showMobileStatus = false"></div>
-
-        <main class="main-grid" :class="{ 'sidebar-hidden': !showSidebar, 'utilities-hidden': !(showSftpWidget || showStatusWidget) }">
+        <form @submit.prevent="loginStep === 'username' ? submitUsername() : login()" class="term-auth-form">
           
-          <aside class="connection-panel" x-show="isMobile ? showMobileMenu : showSidebar" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
-            <div class="panel-head connection-panel-head" style="margin-bottom: 12px;">
-              <h2 style="font-size: 18px; font-weight: 500;">SSH 连接</h2>
-              <button class="icon-btn panel-add-btn" @click="newConnection()" title="新建连接"><span class="material-symbols-rounded">add</span></button>
-              <div class="path-input-wrapper" style="margin-top: 12px; position: relative;">
-                <span class="material-symbols-rounded path-icon" style="font-size: 17px;">search</span>
-                <input x-model="connectionQuery" type="search" placeholder="搜索服务器名称或 IP" class="path-input connection-search-input" autocomplete="off" aria-label="便捷搜索服务器">
-                <button x-show="connectionQuery" @click="connectionQuery = ''" class="path-go-btn" title="清空搜索" aria-label="清空搜索" style="position: absolute; right: 4px;"><span class="material-symbols-rounded" style="font-size: 16px;">close</span></button>
+          <!-- Step 1: Username prompt -->
+          <div class="term-prompt-row term-cli-row" @click="document.getElementById('term-login-username')?.focus()">
+            <span class="term-prompt">login as:</span>
+            <template x-if="loginStep === 'username'">
+              <div class="term-cli-input-wrap">
+                <input id="term-login-username" x-model="loginForm.username" autocomplete="username" class="term-cli-input" :style="'width:' + ((loginForm.username || '').length) + 'ch;'" autofocus required @keydown.enter.prevent="submitUsername()">
+                <span class="term-cursor">_</span>
+              </div>
+            </template>
+            <template x-if="loginStep === 'password'">
+              <span class="term-static-val" @click="backToUsername()" title="Click to change username" x-text="loginForm.username"></span>
+            </template>
+          </div>
+
+          <!-- Step 2: Password prompt (Linux SSH hidden style) -->
+          <template x-if="loginStep === 'password'">
+            <div class="term-prompt-row term-cli-row" @click="document.getElementById('term-login-password')?.focus()">
+              <span class="term-prompt" x-text="(loginForm.username || 'user') + '@slatessh\'s password:'"></span>
+              <div class="term-cli-input-wrap">
+                <input id="term-login-password" x-model="loginForm.password" type="password" autocomplete="current-password" class="term-cli-input term-stealth-input" :style="'width:' + ((loginForm.password || '').length) + 'ch;'" autofocus required @keydown.backspace="if(!loginForm.password) backToUsername()">
+                <span class="term-cursor">_</span>
               </div>
             </div>
+          </template>
+
+          <div class="term-options-row">
+            <label class="term-check-row">
+              <input type="checkbox" x-model="loginForm.rememberMe">
+              <span>[x] Remember session</span>
+            </label>
+          </div>
+
+          <p class="term-msg error" x-show="error" x-text="error"></p>
+
+          <div class="term-form-actions">
+            <template x-if="loginStep === 'username'">
+              <button class="term-btn primary" type="submit">[ Next &gt; ]</button>
+            </template>
+            <template x-if="loginStep === 'password'">
+              <div class="term-action-group">
+                <button class="term-btn primary" type="submit">[ Authenticate ]</button>
+                <button class="term-btn" type="button" @click="backToUsername()">[ Change User ]</button>
+              </div>
+            </template>
+          </div>
+        </form>
+      </div>
+    </template>
+
+    <!-- Main Workspace Area -->
+    <template x-if="!booting && authenticated">
+      <div class="workspace-root">
+
+        <!-- INITIAL STATE: Borderless Seamless Host Launcher when no active session -->
+        <template x-if="!sessions.length">
+          <div class="centered-launcher-wrap">
+            <div class="launcher-term-container">
+              
+              <!-- Clean minimal CLI search & action bar -->
+              <div class="launcher-cli-bar">
+                <div class="launcher-search-box">
+                  <span class="term-prompt">host&gt;</span>
+                  <input x-model="connectionQuery" type="search" placeholder="search host or ip..." class="term-cli-search" autocomplete="off">
+                  <button x-show="connectionQuery" @click="connectionQuery = ''" class="term-btn-mini">[x]</button>
+                </div>
+                <div class="launcher-actions-top">
+                  <button class="term-btn primary" @click="newConnection('SSH', 'manager')">[ + New Host ]</button>
+                  <button class="term-btn" @click="showConnectionManager = true">[ Manager ]</button>
+                  <button class="term-btn" @click="logout()">[ Logout ]</button>
+                </div>
+              </div>
+
+              <!-- Monospace host table seamless with background -->
+              <div class="launcher-list-wrap">
+                <div class="launcher-table-head">
+                  <span class="col-idx">#</span>
+                  <span class="col-type">TYPE</span>
+                  <span class="col-name">NAME</span>
+                  <span class="col-dest">TARGET HOST</span>
+                  <span class="col-act"></span>
+                </div>
+                <div class="launcher-table-rows">
+                  <template x-for="(connection, idx) in filteredConnections" :key="connection.id">
+                    <div class="launcher-row" @click="openSession(connection)">
+                      <span class="col-idx" x-text="'[' + (idx + 1) + ']'"></span>
+                      <span class="col-type"><span class="term-badge" x-text="connection.type || 'SSH'"></span></span>
+                      <span class="col-name"><strong x-text="connection.name"></strong></span>
+                      <span class="col-dest" x-text="(connection.username || 'root') + '@' + connection.host + ':' + connection.port"></span>
+                      <span class="col-act" @click.stop>
+                        <button class="term-btn primary" @click="openSession(connection)">[ Connect ]</button>
+                        <button class="term-btn" @click="testSavedConnection(connection.id)">[ Test ]</button>
+                        <button class="term-btn" @click="editConnection(connection, 'manager')">[ Edit ]</button>
+                      </span>
+                    </div>
+                  </template>
+                  <div class="launcher-empty" x-show="!connections.length">
+                    -- No hosts saved. Click [ + New Host ] to add a connection. --
+                  </div>
+                  <div class="launcher-empty" x-show="connections.length && !filteredConnections.length">
+                    -- No matching hosts found for search. --
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </template>
+
+        <!-- ACTIVE STATE: Seamless 3-Panel Terminal Layout -->
+        <template x-if="sessions.length > 0">
+          <div class="main-grid" :class="{ 'sidebar-hidden': !showSidebar, 'utilities-hidden': !(showSftpWidget || showStatusWidget) }">
             
-            <div class="connection-list" style="overflow-y: auto; flex: 1; padding-bottom: 12px; margin: -8px; padding: 8px;">
-              <template x-for="connection in filteredConnections" :key="connection.id">
-                <div class="connection-item" :class="isConnectionActive(connection) ? 'active' : ''" @click="openSession(connection)">
-                  <div class="connection-content">
-                    <div class="item-main">
-                      <span class="type-badge" x-text="connection.type || 'SSH'"></span>
+            <!-- LEFT PANEL: Host Directory -->
+            <aside class="connection-panel" x-show="isMobile ? showMobileMenu : showSidebar" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
+              <div class="panel-section-title">
+                <span>// HOST DIRECTORY</span>
+                <button class="term-btn" @click="newConnection('SSH', 'sidebar')" title="Add connection">[+ New]</button>
+              </div>
+
+              <div class="term-search-inline">
+                <span class="term-prompt">&gt;</span>
+                <input x-model="connectionQuery" type="search" placeholder="filter hosts..." class="term-input" autocomplete="off">
+                <button x-show="connectionQuery" @click="connectionQuery = ''" class="term-btn-mini">[x]</button>
+              </div>
+
+              <div class="connection-list">
+                <template x-for="connection in filteredConnections" :key="connection.id">
+                  <div class="connection-item" :class="isConnectionActive(connection) ? 'active' : ''" @click="openSession(connection)">
+                    <div class="connection-main">
+                      <span class="term-badge" x-text="connection.type || 'SSH'"></span>
                       <span class="item-name" x-text="connection.name"></span>
                     </div>
+                    <div class="connection-tools">
+                      <button class="term-btn-mini" @click.stop="editConnection(connection, 'sidebar')">[E]</button>
+                    </div>
                   </div>
-                  <button class="icon-btn hide-icon" @click.stop="editConnection(connection, 'sidebar')" title="编辑"><span class="material-symbols-rounded" style="font-size:16px;">edit</span></button>
-                </div>
-              </template>
-              <div class="empty" x-show="!connections.length" style="padding-top: 24px;">暂无已保存的连接</div>
-              <div class="empty" x-show="connections.length && !filteredConnections.length" style="padding-top: 24px;">未找到匹配的服务器</div>
-            </div>
-
-            <div class="panel-footer command-strip" style="margin-top: auto; padding-top: 16px; display: flex; gap: 8px; align-items: center;">
-              <button class="icon-btn" @click="newConnection()" title="新建连接"><span class="material-symbols-rounded" style="font-size: 18px;">add</span></button>
-              <button class="icon-btn" @click="showConnectionManager = true" title="连接管理"><span class="material-symbols-rounded" style="font-size: 18px;">dns</span></button>
-              <button class="icon-btn" @click="toggleTheme()" :title="theme === 'dark' ? '白天模式' : '夜间模式'"><span class="material-symbols-rounded" style="font-size: 18px;" x-text="theme === 'dark' ? 'light_mode' : 'dark_mode'"></span></button>
-            </div>
-          </aside>
-
-          <section class="terminal-panel" :class="isFullscreen ? 'has-fullscreen' : ''">
-            <div class="tabbar">
-              <template x-for="tab in sessions" :key="tab.id">
-                <div class="tab-wrapper" :class="activeSessionId === tab.id ? 'active' : ''">
-                  <button @click="activateSession(tab.id)" class="tab" :class="activeSessionId === tab.id ? 'active' : ''">
-                    <span class="material-symbols-rounded tab-icon" x-text="(tab.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'terminal'" style="font-size: 14px; margin-right: 4px;"></span>
-                    <span x-text="tab.name"></span>
-                    <span class="tab-close" @click.stop="closeTab(tab.id)"><span class="material-symbols-rounded" style="font-size:14px;">close</span></span>
-                  </button>
-                </div>
-              </template>
-              <button class="tab-new" @click="showConnectionManager = true"><span class="material-symbols-rounded" style="font-size:18px;">add</span></button>
-              <div class="tab-empty" x-show="!sessions.length" style="padding: 4px 12px;">暂无活动会话</div>
-            </div>
-
-            <div class="terminal-commandbar" x-show="activeSessionId">
-              <button class="icon-btn" x-show="isMobile" @click="copyTerminalSelection()" title="复制"><span class="material-symbols-rounded">content_copy</span></button>
-              <button class="icon-btn" x-show="isMobile" @click="mobileTerminalPaste()" title="粘贴"><span class="material-symbols-rounded">content_paste</span></button>
-              <button class="icon-btn" @click="clearActiveTerminal()" title="清屏"><span class="material-symbols-rounded">mop</span></button>
-              <div class="terminal-search-box">
-                <span class="material-symbols-rounded">search</span>
-                <input x-model="terminalSearch" @keydown.enter="searchTerminal()" placeholder="查找">
-              </div>
-              <button class="icon-btn" @click="findPreviousTerminalResult()" title="上一个"><span class="material-symbols-rounded">keyboard_arrow_up</span></button>
-              <button class="icon-btn" @click="findNextTerminalResult()" title="下一个"><span class="material-symbols-rounded">keyboard_arrow_down</span></button>
-            </div>
-
-            <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
-              <button x-show="activeSessionId" @click="toggleFullscreen()" class="terminal-fullscreen-btn" :title="isFullscreen ? '退出全屏' : '全屏'">
-                <span class="material-symbols-rounded" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'"></span>
-                <span class="terminal-fullscreen-label" x-text="isFullscreen ? '退出全屏' : '全屏'"></span>
-              </button>
-              <div x-show="terminalCopyViewer.visible" class="terminal-copy-viewer" @click.stop>
-                <div class="terminal-copy-head">
-                  <strong>终端内容</strong>
-                  <button class="icon-btn" @click="closeTerminalCopyViewer()" title="关闭"><span class="material-symbols-rounded">close</span></button>
-                </div>
-                <textarea readonly x-model="terminalCopyViewer.text" spellcheck="false"></textarea>
-              </div>
-              <div x-show="terminalPasteBox.visible" class="terminal-paste-popover" @click.stop>
-                <textarea x-model="terminalPasteBox.text" placeholder="命令"></textarea>
-                <div>
-                  <button @click="terminalPasteBox.visible = false">取消</button>
-                  <button class="primary" @click="sendTerminalPasteText()">发送</button>
-                </div>
-              </div>
-              <template x-for="tab in sessions" :key="tab.id + '-terminal'">
-                <div x-show="activeSessionId === tab.id" class="terminal-wrap">
-                  <template x-if="tab.type === 'RDP'">
-                    <div class="rdp-surface" :id="'rdp-' + tab.id"></div>
-                  </template>
-                  <template x-if="tab.type !== 'RDP'">
-                    <div :id="'terminal-' + tab.id" class="terminal-surface"></div>
-                  </template>
-                </div>
-              </template>
-              <template x-if="!sessions.length">
-                <div class="terminal-empty">
-                  <span class="material-symbols-rounded empty-icon">terminal</span>
-                  <div class="empty-text">点击右上角「连接」或右下角菜单，选择一个 SSH / RDP 连接开始</div>
-                </div>
-              </template>
-            </div>
-
-            <div class="terminal-mobile-bar" x-show="isMobile && activeSessionId">
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('copy')"><span class="material-symbols-rounded">content_copy</span></button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('paste')"><span class="material-symbols-rounded">content_paste</span></button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('ctrl')" :class="ctrlKeyActive ? 'active' : ''">Ctrl</button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b')">Esc</button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x09')">Tab</button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[A')"><span class="material-symbols-rounded">keyboard_arrow_up</span></button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[B')"><span class="material-symbols-rounded">keyboard_arrow_down</span></button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[D')"><span class="material-symbols-rounded">keyboard_arrow_left</span></button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[C')"><span class="material-symbols-rounded">keyboard_arrow_right</span></button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '/')">/</button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '-')">-</button>
-              <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '|')">|</button>
-            </div>
-            
-            <p class="status-line" style="display:none;" :class="testMessageType" x-text="testMessage"></p>
-          </section>
-
-          <aside class="side-panel" x-show="!isMobile ? (showSftpWidget || showStatusWidget) : true" :class="isMobile ? (showMobileStatus ? 'mobile-drawer right open' : 'mobile-drawer right') : ''">
-            <div class="side-tabs top-icons">
-              <button class="icon-btn" :class="rightTab === 'files' ? 'active' : ''" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false" title="文件"><span class="material-symbols-rounded">folder</span></button>
-              <button class="icon-btn" :class="rightTab === 'status' ? 'active' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false" title="状态监控"><span class="material-symbols-rounded">speed</span></button>
-              <div style="flex:1"></div>
-              <button class="icon-btn" x-show="isMobile" @click="showMobileStatus = false"><span class="material-symbols-rounded">close</span></button>
-            </div>
-
-            <div class="side-panel-body" x-show="rightTab === 'files'">
-              <div class="panel-head" style="display:none;">
-                <h2>SFTP 文件</h2>
-              </div>
-              <div class="path-bar-container" @click.away="showPathDropdown = false" style="margin-top: 0; margin-bottom: 12px;">
-                <div class="path-input-wrapper">
-                  <span class="material-symbols-rounded path-icon" style="font-size:16px;">folder_open</span>
-                  <input type="text" x-model="pathInput" @focus="showPathDropdown = true; activeSuggestionIndex = -1" @keydown.down.prevent="navigateSuggestions(1)" @keydown.up.prevent="navigateSuggestions(-1)" @keydown.enter.prevent="selectSuggestionOrSubmit()" @keydown.escape="showPathDropdown = false" class="path-input" placeholder="跳转路径...">
-                  <button @click="submitPath()" class="path-go-btn" title="跳转"><span class="material-symbols-rounded" style="font-size: 16px;">arrow_forward</span></button>
-                </div>
-              </div>
-              
-              <div class="file-actions compact-icon-actions">
-                <button class="icon-btn" @click="goParentDir()" title="上级目录" aria-label="上级目录"><span class="material-symbols-rounded">drive_file_move</span></button>
-                <button class="icon-btn" @click="refreshFiles()" title="刷新" aria-label="刷新"><span class="material-symbols-rounded">refresh</span></button>
-                <button class="icon-btn" @click="promptMkdir()" title="新建目录" aria-label="新建目录"><span class="material-symbols-rounded">create_new_folder</span></button>
-                <button class="icon-btn" @click="promptWriteFile()" title="新建文件" aria-label="新建文件"><span class="material-symbols-rounded">note_add</span></button>
-                <button class="icon-btn" @click="pasteClipboard()" title="粘贴" aria-label="粘贴"><span class="material-symbols-rounded">content_paste</span></button>
-                <button class="icon-btn" @click="triggerUpload()" title="上传" aria-label="上传"><span class="material-symbols-rounded">upload</span></button>
-                <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
-              </div>
-              
-              <div class="file-list">
-                <template x-if="!activeSessionId">
-                  <div class="empty" style="padding-top: 40px;">连接 SSH 后显示远端文件。</div>
                 </template>
-                <template x-for="entry in files" :key="entry.filename">
-                  <div class="file-item" @contextmenu="showContextMenu($event, entry)">
-                    <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)">
-                      <span :class="getFileIconClass(entry)" style="background: transparent; color: var(--accent);">
-                        <span class="material-symbols-rounded" x-text="getFileIcon(entry)" style="font-size: 20px;"></span>
-                      </span>
-                      <span>
-                        <strong x-text="entry.filename"></strong>
-                      </span>
+                <div class="empty-term" x-show="!connections.length">-- No saved hosts --</div>
+                <div class="empty-term" x-show="connections.length && !filteredConnections.length">-- No matches --</div>
+              </div>
+
+              <!-- Bottom controls moved downward -->
+              <div class="connection-panel-bottom">
+                <button class="term-btn" @click="showConnectionManager = true">[ Manager ]</button>
+                <button class="term-btn" @click="toggleSidebarPanel()">[ &lt;&lt; Collapse ]</button>
+              </div>
+            </aside>
+
+            <!-- Expander for sidebar when collapsed -->
+            <button x-show="!isMobile && !showSidebar" @click="toggleSidebarPanel()" class="sidebar-edge-toggle" title="Expand Host List">[ &gt;&gt; Hosts ]</button>
+
+            <!-- CENTER PANEL: Terminal Command Stage -->
+            <section class="terminal-panel" :class="isFullscreen ? 'has-fullscreen' : ''">
+              
+              <!-- Tab bar -->
+              <div class="tabbar">
+                <template x-for="(tab, idx) in sessions" :key="tab.id">
+                  <div class="tab-wrapper" :class="activeSessionId === tab.id ? 'active' : ''">
+                    <button @click="activateSession(tab.id)" class="tab" :class="activeSessionId === tab.id ? 'active' : ''">
+                      <span class="tab-badge" x-text="'#' + (idx + 1)"></span>
+                      <span class="tab-type" x-text="'[' + (tab.type || 'SSH') + ']'"></span>
+                      <span class="tab-name" x-text="tab.name"></span>
+                      <span class="tab-close" @click.stop="closeTab(tab.id)">[x]</span>
                     </button>
-                    <div class="file-tools" style="display:none;"></div>
+                  </div>
+                </template>
+                <button class="tab-new" @click="showConnectionManager = true" title="New Session">[ + ]</button>
+                <div style="flex:1"></div>
+                <button x-show="!isMobile && !(showSftpWidget || showStatusWidget)" @click="toggleUtilityPanel()" class="term-btn-mini" title="Show Side Panel">[ Files &gt;&gt; ]</button>
+              </div>
+
+              <!-- Terminal Command Bar -->
+              <div class="terminal-commandbar" x-show="activeSessionId">
+                <button class="term-btn" x-show="isMobile" @click="copyTerminalSelection()">[ Copy ]</button>
+                <button class="term-btn" x-show="isMobile" @click="mobileTerminalPaste()">[ Paste ]</button>
+                <button class="term-btn" @click="clearActiveTerminal()">[ Clear ]</button>
+                <div class="terminal-search-box">
+                  <span class="term-prompt">find:</span>
+                  <input x-model="terminalSearch" @keydown.enter="searchTerminal()" placeholder="search terminal buffer..." class="term-input">
+                </div>
+                <button class="term-btn" @click="findPreviousTerminalResult()">[ &lt; Prev ]</button>
+                <button class="term-btn" @click="findNextTerminalResult()">[ Next &gt; ]</button>
+                <button @click="toggleFullscreen()" class="term-btn" x-text="isFullscreen ? '[ Window ]' : '[ Fullscreen ]'"></button>
+              </div>
+
+              <!-- Terminal viewport stage -->
+              <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
+                <div x-show="terminalCopyViewer.visible" class="terminal-copy-viewer" @click.stop>
+                  <div class="terminal-copy-head">
+                    <strong>=== TERMINAL OUTPUT BUFFER ===</strong>
+                    <button class="term-btn" @click="closeTerminalCopyViewer()">[ Close ]</button>
+                  </div>
+                  <textarea readonly x-model="terminalCopyViewer.text" spellcheck="false" class="term-textarea"></textarea>
+                </div>
+
+                <div x-show="terminalPasteBox.visible" class="terminal-paste-popover" @click.stop>
+                  <div class="terminal-paste-head">=== PASTE TEXT TO PTY ===</div>
+                  <textarea x-model="terminalPasteBox.text" placeholder="Type or paste commands here..." class="term-textarea"></textarea>
+                  <div class="terminal-paste-actions">
+                    <button class="term-btn" @click="terminalPasteBox.visible = false">[ Cancel ]</button>
+                    <button class="term-btn primary" @click="sendTerminalPasteText()">[ Send to PTY ]</button>
+                  </div>
+                </div>
+
+                <template x-for="tab in sessions" :key="tab.id + '-terminal'">
+                  <div x-show="activeSessionId === tab.id" class="terminal-wrap">
+                    <template x-if="tab.type === 'RDP'">
+                      <div class="rdp-surface" :id="'rdp-' + tab.id"></div>
+                    </template>
+                    <template x-if="tab.type !== 'RDP'">
+                      <div :id="'terminal-' + tab.id" class="terminal-surface"></div>
+                    </template>
                   </div>
                 </template>
               </div>
-            </div>
-            
-            <div class="side-panel-body" x-show="rightTab === 'status'">
-              <div class="panel-head" style="margin-bottom: 0;">
-                <h2 style="font-size: 16px;">服务器状态</h2>
-                <button x-show="!isMobile" @click="refreshFiles()" class="icon-btn"><span class="material-symbols-rounded" style="font-size: 16px;">refresh</span></button>
+
+              <!-- Mobile command helper bar -->
+              <div class="terminal-mobile-bar" x-show="isMobile && activeSessionId">
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('copy')">[Copy]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('paste')">[Paste]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('ctrl')" :class="ctrlKeyActive ? 'active' : ''">[Ctrl]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b')">[Esc]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x09')">[Tab]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[A')">[^]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[B')">[v]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[D')">[&lt;]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[C')">[&gt;]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '/')">[/]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '-')">[-]</button>
+                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '|')">[|]</button>
               </div>
-              <template x-if="activeStatus">
-                <div class="status-list">
-                  <div class="status-info-row"><span>系统</span><strong x-text="activeStatus.osName || '-' "></strong></div>
-                  <div class="status-info-row"><span>IP</span><strong x-text="activeStatus.serverIp || '-' "></strong></div>
-                  <div class="status-grid">
-                    <div class="status-circle" :class="(activeStatus.cpuPercent || 0) > 85 ? 'level-danger' : (activeStatus.cpuPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
-                      <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.cpuPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
-                      <div class="inner">
-                        <strong x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></strong>
-                        <span>CPU</span>
-                      </div>
-                    </div>
-                    <div class="status-circle" :class="(activeStatus.memPercent || 0) > 85 ? 'level-danger' : (activeStatus.memPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
-                      <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.memPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
-                      <div class="inner">
-                        <strong x-text="Math.round(activeStatus.memPercent || 0) + '%'"></strong>
-                        <span>内存</span>
-                      </div>
-                    </div>
-                    <div class="status-circle" :class="(activeStatus.diskPercent || 0) > 85 ? 'level-danger' : (activeStatus.diskPercent || 0) > 60 ? 'level-warn' : 'level-ok'">
-                      <svg viewBox="0 0 36 36"><path class="bg" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/><path class="fg" stroke-dasharray="100, 100" :stroke-dashoffset="100 - (activeStatus.diskPercent || 0)" d="M18 2a16 16 0 1 1 0 32a16 16 0 1 1 0-32"/></svg>
-                      <div class="inner">
-                        <strong x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></strong>
-                        <span>磁盘</span>
-                      </div>
-                    </div>
+            </section>
+
+            <!-- RIGHT PANEL: SFTP & Server Status -->
+            <aside class="side-panel" x-show="!isMobile ? (showSftpWidget || showStatusWidget) : true" :class="isMobile ? (showMobileStatus ? 'mobile-drawer right open' : 'mobile-drawer right') : ''">
+              <div class="side-tabs">
+                <button class="term-btn" :class="rightTab === 'files' ? 'active' : ''" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false">[ FILES ]</button>
+                <button class="term-btn" :class="rightTab === 'status' ? 'active' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false">[ STATS ]</button>
+                <div style="flex:1"></div>
+                <button class="term-btn-mini" @click="toggleUtilityPanel()" title="Collapse Panel">[ &gt;&gt; ]</button>
+              </div>
+
+              <!-- SFTP File Explorer -->
+              <div class="side-panel-body" x-show="rightTab === 'files'">
+                <div class="path-bar-container" @click.away="showPathDropdown = false">
+                  <div class="path-input-wrapper">
+                    <span class="term-prompt">pwd:</span>
+                    <input type="text" x-model="pathInput" @focus="showPathDropdown = true; activeSuggestionIndex = -1" @keydown.down.prevent="navigateSuggestions(1)" @keydown.up.prevent="navigateSuggestions(-1)" @keydown.enter.prevent="selectSuggestionOrSubmit()" @keydown.escape="showPathDropdown = false" class="term-input" placeholder="/path/to/remote...">
+                    <button @click="submitPath()" class="term-btn-mini">[ Go ]</button>
                   </div>
-                  <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">download</span> 下行</span><strong x-text="bytes(activeStatus.netRxRate)"></strong></div>
-                  <div class="status-info-row"><span><span class="material-symbols-rounded" style="font-size:16px;vertical-align:bottom;">upload</span> 上行</span><strong x-text="bytes(activeStatus.netTxRate)"></strong></div>
                 </div>
-              </template>
-              <template x-if="!activeStatus">
-                <div class="empty" style="padding-top: 40px;">暂无状态</div>
-              </template>
-            </div>
 
-          </aside>
+                <div class="file-actions">
+                  <button class="term-btn" @click="goParentDir()" title="Parent Directory">[ .. UP ]</button>
+                  <button class="term-btn" @click="refreshFiles()" title="Refresh">[ Refresh ]</button>
+                  <button class="term-btn" @click="promptMkdir()" title="Create Directory">[ +DIR ]</button>
+                  <button class="term-btn" @click="promptWriteFile()" title="Create File">[ +FILE ]</button>
+                  <button class="term-btn" @click="pasteClipboard()" title="Paste">[ Paste ]</button>
+                  <button class="term-btn" @click="triggerUpload()" title="Upload">[ Upload ]</button>
+                  <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
+                </div>
 
-        </main>
+                <div class="file-list">
+                  <template x-if="!activeSessionId">
+                    <div class="empty-term">-- Connect SSH session to view remote filesystem --</div>
+                  </template>
+                  <template x-for="entry in files" :key="entry.filename">
+                    <div class="file-item" @contextmenu="showContextMenu($event, entry)" :title="entry.filename + (entry.isDir ? '/' : '')">
+                      <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)" :title="entry.filename + (entry.isDir ? '/' : '')">
+                        <span :class="getFileIconClass(entry)" x-text="getFileIcon(entry)"></span>
+                        <span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span>
+                      </button>
+                    </div>
+                  </template>
+                </div>
+              </div>
 
+              <!-- Server Status Monitor -->
+              <div class="side-panel-body" x-show="rightTab === 'status'">
+                <div class="status-box">
+                  <template x-if="activeStatus">
+                    <div class="status-terminal-list">
+                      <div class="status-term-row"><span class="st-label">OS:</span><strong class="st-val" x-text="activeStatus.osName || '-'"></strong></div>
+                      <div class="status-term-row"><span class="st-label">IP:</span><strong class="st-val" x-text="activeStatus.serverIp || '-'"></strong></div>
+                      
+                      <div class="meter-block">
+                        <div class="meter-head"><span>CPU USAGE:</span> <strong x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></strong></div>
+                        <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.cpuPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.cpuPercent || 0)/10)))) + ']'"></div>
+                      </div>
+
+                      <div class="meter-block">
+                        <div class="meter-head"><span>MEM USAGE:</span> <strong x-text="Math.round(activeStatus.memPercent || 0) + '%'"></strong></div>
+                        <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.memPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.memPercent || 0)/10)))) + ']'"></div>
+                      </div>
+
+                      <div class="meter-block">
+                        <div class="meter-head"><span>DISK USAGE:</span> <strong x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></strong></div>
+                        <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.diskPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.diskPercent || 0)/10)))) + ']'"></div>
+                      </div>
+
+                      <div class="status-term-row"><span class="st-label">RX (DOWN):</span><strong class="st-val" x-text="bytes(activeStatus.netRxRate)"></strong></div>
+                      <div class="status-term-row"><span class="st-label">TX (UP):</span><strong class="st-val" x-text="bytes(activeStatus.netTxRate)"></strong></div>
+                    </div>
+                  </template>
+                  <template x-if="!activeStatus">
+                    <div class="empty-term">-- System telemetry waiting for session active --</div>
+                  </template>
+                </div>
+              </div>
+
+              <!-- Bottom collapse button moved downward -->
+              <div class="side-panel-bottom">
+                <button class="term-btn" @click="toggleUtilityPanel()">[ &gt;&gt; Collapse ]</button>
+              </div>
+            </aside>
+          </div>
+        </template>
+
+        <!-- Connection Manager Modal -->
         <div x-show="showConnectionManager" class="modal-backdrop" @click.self="closeConnectionManager()">
           <section class="connection-modal">
             <div class="modal-head">
-              <h2 x-text="showConnectionForm ? (connectionForm.id ? '编辑连接' : '新增连接') : '连接管理'"></h2>
-              <button @click="showConnectionForm ? cancelConnectionForm() : closeConnectionManager()" class="icon-btn" style="border: none; background: transparent; padding: 4px;">
-                <span class="material-symbols-rounded" x-text="showConnectionForm && connectionFormSource === 'manager' ? 'arrow_back' : 'close'"></span>
+              <span class="modal-title" x-text="showConnectionForm ? (connectionForm.id ? '=== [ EDIT CONNECTION ] ===' : '=== [ NEW CONNECTION ] ===') : '=== [ CONNECTION DIRECTORY ] ==='"></span>
+              <button @click="showConnectionForm ? cancelConnectionForm() : closeConnectionManager()" class="term-btn-mini">
+                <span x-text="showConnectionForm && connectionFormSource === 'manager' ? '[ &lt; Back ]' : '[ Close X ]'"></span>
               </button>
             </div>
+
             <div class="connection-layout">
+              <!-- Saved connections list -->
               <div class="manager-connection-list" x-show="!showConnectionForm">
                 <div class="list-head">
-                  <strong>已保存连接</strong>
-                  <button @click="newConnection('SSH', 'manager')" class="primary" style="padding: 6px 12px; border-radius: 20px;"><span class="material-symbols-rounded" style="font-size:18px;">add</span> 新增</button>
+                  <span>SAVED HOST RECORDS:</span>
+                  <button @click="newConnection('SSH', 'manager')" class="term-btn primary">[ + New Host ]</button>
                 </div>
-                <template x-for="connection in connections" :key="connection.id">
-                  <div class="manager-connection-card">
-                    <div class="manager-card-main">
-                      <div class="manager-card-icon" :class="(connection.type || 'SSH') === 'RDP' ? 'rdp' : 'ssh'">
-                        <span class="material-symbols-rounded" x-text="(connection.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'terminal'"></span>
-                      </div>
-                      <div class="manager-card-text">
-                        <strong x-text="connection.name"></strong>
-                        <small>
-                          <span class="type-badge" x-text="connection.type || 'SSH'"></span>
-                          <span x-text="connection.username + '@' + connection.host + ':' + connection.port"></span>
-                        </small>
-                        <p x-show="connection.notes" x-text="connection.notes"></p>
-                      </div>
-                    </div>
-                    <div class="manager-card-actions">
-                      <button class="primary" @click="openSession(connection); closeConnectionManager()"><span class="material-symbols-rounded" x-text="(connection.type || 'SSH') === 'RDP' ? 'desktop_windows' : 'login'"></span><span x-text="(connection.type || 'SSH') === 'RDP' ? '桌面' : '连接'"></span></button>
-                      <button @click="testSavedConnection(connection.id)"><span class="material-symbols-rounded">network_check</span>测试</button>
-                      <button @click="editConnection(connection)"><span class="material-symbols-rounded">edit</span>编辑</button>
-                      <button class="danger-text icon-btn" @click="deleteConnection(connection.id)" title="删除"><span class="material-symbols-rounded" style="font-size:18px;">delete</span></button>
-                    </div>
+                <div class="manager-cards-scroll">
+                  <div class="manager-table-head">
+                    <span class="m-idx">#</span>
+                    <span class="m-type">TYPE</span>
+                    <span class="m-name">NAME</span>
+                    <span class="m-dest">TARGET HOST</span>
+                    <span class="m-act"></span>
                   </div>
-                </template>
-                <div class="empty" x-show="!connections.length">暂无已保存的连接</div>
+                  <template x-for="(connection, idx) in connections" :key="connection.id">
+                    <div class="manager-connection-row">
+                      <span class="m-idx" x-text="'[' + (idx + 1) + ']'"></span>
+                      <span class="m-type"><span class="term-badge" x-text="connection.type || 'SSH'"></span></span>
+                      <span class="m-name"><strong x-text="connection.name"></strong></span>
+                      <span class="m-dest" x-text="connection.username + '@' + connection.host + ':' + connection.port"></span>
+                      <span class="m-act">
+                        <button class="term-btn primary" @click="openSession(connection); closeConnectionManager()">[ Connect ]</button>
+                        <button class="term-btn" @click="testSavedConnection(connection.id)">[ Test ]</button>
+                        <button class="term-btn" @click="editConnection(connection)">[ Edit ]</button>
+                        <button class="term-btn danger" @click="deleteConnection(connection.id)">[ Del ]</button>
+                      </span>
+                    </div>
+                  </template>
+                  <div class="empty-term" x-show="!connections.length">-- No saved connections --</div>
+                </div>
               </div>
 
+              <!-- Connection configuration form -->
               <form x-show="showConnectionForm" @submit.prevent="saveConnection()" class="connection-form">
-                <input x-model="connectionForm.name" autocomplete="off" placeholder="名称" required>
-                <select x-model="connectionForm.type" @change="normalizeConnectionForm()">
-                  <option value="SSH">SSH 终端</option>
-                  <option value="RDP">RDP 远程桌面</option>
-                </select>
-                <input x-model="connectionForm.host" autocomplete="url" placeholder="主机 (IP 或域名)" required>
-                <input x-model.number="connectionForm.port" type="number" autocomplete="off" placeholder="端口" required>
-                <input x-model="connectionForm.username" autocomplete="username" placeholder="用户名" required>
-                <select x-show="connectionForm.type !== 'RDP'" x-model="connectionForm.auth_method">
-                  <option value="password">密码</option>
-                  <option value="key">私钥</option>
-                </select>
+                <div class="form-row-inline">
+                  <span class="form-key">Name:</span>
+                  <input x-model="connectionForm.name" autocomplete="off" placeholder="Production Server" class="term-input" required>
+                </div>
+                <div class="form-row-inline">
+                  <span class="form-key">Protocol:</span>
+                  <select x-model="connectionForm.type" @change="normalizeConnectionForm()" class="term-select">
+                    <option value="SSH">SSH Terminal</option>
+                    <option value="RDP">RDP Remote Desktop</option>
+                  </select>
+                </div>
+                <div class="form-row-inline">
+                  <span class="form-key">Host:</span>
+                  <input x-model="connectionForm.host" autocomplete="url" placeholder="192.168.1.100" class="term-input" required>
+                </div>
+                <div class="form-row-inline">
+                  <span class="form-key">Port:</span>
+                  <input x-model.number="connectionForm.port" type="number" autocomplete="off" placeholder="22" class="term-input" required>
+                </div>
+                <div class="form-row-inline">
+                  <span class="form-key">Username:</span>
+                  <input x-model="connectionForm.username" autocomplete="username" placeholder="root" class="term-input" required>
+                </div>
+                <div class="form-row-inline" x-show="connectionForm.type !== 'RDP'">
+                  <span class="form-key">Auth Method:</span>
+                  <select x-model="connectionForm.auth_method" class="term-select">
+                    <option value="password">Password</option>
+                    <option value="key">Private Key</option>
+                  </select>
+                </div>
                 <template x-if="connectionForm.auth_method === 'password' || connectionForm.type === 'RDP'">
-                  <input x-model="connectionForm.password" type="password" autocomplete="current-password" :placeholder="connectionForm.id ? '留空则保持原密码' : '密码'">
+                  <div class="form-row-inline">
+                    <span class="form-key">Password:</span>
+                    <input x-model="connectionForm.password" type="password" autocomplete="current-password" :placeholder="connectionForm.id ? '(leave blank to keep stored password)' : '••••••••'" class="term-input">
+                  </div>
                 </template>
                 <template x-if="connectionForm.auth_method === 'key' && connectionForm.type !== 'RDP'">
                   <div class="form-stack">
-                    <textarea x-model="connectionForm.private_key" placeholder="私钥，编辑时留空则保持原私钥"></textarea>
-                    <input x-model="connectionForm.passphrase" type="password" autocomplete="current-password" placeholder="Passphrase，可留空">
+                    <div class="form-row-inline">
+                      <span class="form-key">Private Key:</span>
+                      <textarea x-model="connectionForm.private_key" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..." class="term-textarea"></textarea>
+                    </div>
+                    <div class="form-row-inline">
+                      <span class="form-key">Passphrase:</span>
+                      <input x-model="connectionForm.passphrase" type="password" autocomplete="current-password" placeholder="Passphrase (optional)" class="term-input">
+                    </div>
                   </div>
                 </template>
-                <textarea x-model="connectionForm.notes" placeholder="备注"></textarea>
+                <div class="form-row-inline">
+                  <span class="form-key">Notes:</span>
+                  <input x-model="connectionForm.notes" placeholder="Optional notes..." class="term-input">
+                </div>
                 <div class="form-actions">
-                  <button class="primary" type="submit">保存</button>
-                  <button type="button" @click="testConnection()">测试</button>
-                  <button type="button" @click="cancelConnectionForm()">取消</button>
+                  <button class="term-btn primary" type="submit">[ Save Host ]</button>
+                  <button class="term-btn" type="button" @click="testConnection()">[ Test Connectivity ]</button>
+                  <button class="term-btn" type="button" @click="cancelConnectionForm()">[ Cancel ]</button>
                 </div>
               </form>
             </div>
           </section>
         </div>
 
+        <!-- Connection Test Result Modal -->
         <div x-show="testResultModal.visible" class="modal-backdrop test-result-backdrop">
-          <div class="auth-card" style="max-width: 400px; text-align: center;">
-            <h2 style="margin-top: 0;" x-text="testResultModal.title"></h2>
-            <p x-text="testResultModal.message" :class="testResultModal.type"></p>
-            <button class="primary" @click="testResultModal.visible = false" style="margin-top: 14px;">确定</button>
+          <div class="test-result-card">
+            <div class="modal-head">
+              <span class="modal-title" x-text="'=== [ ' + testResultModal.title + ' ] ==='"></span>
+            </div>
+            <p x-text="testResultModal.message" :class="'test-result-msg ' + testResultModal.type"></p>
+            <div class="test-result-actions">
+              <button class="term-btn primary" @click="testResultModal.visible = false">[ OK ]</button>
+            </div>
           </div>
         </div>
 
+        <!-- Remote File Editor Window (Monaco / Plaintext) -->
         <div x-show="activeEditorTab" class="editor-backdrop" :class="editorWindow.minimized ? 'is-minimized' : ''">
-                    <div class="editor-window" :class="{ maximized: editorWindow.maximized, minimized: editorWindow.minimized, resizing: editorWindow.resizing, 'is-saving': editorSaveFeedback.state === 'saving', 'save-success': editorSaveFeedback.state === 'saved' }" :style="editorWindowStyle()">
-            <div class="editor-save-toast" x-show="editorSaveFeedback.state === 'saved'" x-transition.opacity.duration.200ms>
-              <span class="material-symbols-rounded">check_circle</span>
-              <span>已保存</span>
-            </div>
+          <div class="editor-window" :class="{ maximized: editorWindow.maximized, minimized: editorWindow.minimized, resizing: editorWindow.resizing, 'is-saving': editorSaveFeedback.state === 'saving', 'save-success': editorSaveFeedback.state === 'saved' }" :style="editorWindowStyle()">
             <div class="editor-head" @pointerdown="startEditorDrag($event)" @dblclick="toggleEditorMaximize()">
               <div class="editor-title">
+                <span class="editor-prompt">EDIT:</span>
                 <strong x-text="activeEditorTab?.name || ''"></strong>
-                <small x-text="activeEditorTab?.path || ''"></small>
+                <small x-text="'(' + (activeEditorTab?.path || '') + ')'"></small>
               </div>
               <div class="editor-actions">
-                <button class="icon-btn editor-save-btn" :class="{ 'is-saving': editorSaveFeedback.state === 'saving', 'is-saved': editorSaveFeedback.state === 'saved' }" @click.stop="saveEditor()" :title="editorSaveFeedback.state === 'saved' ? '已保存' : (editorSaveFeedback.state === 'saving' ? '保存中…' : '保存')" :disabled="editorSaveFeedback.state === 'saving'">
-                  <span class="material-symbols-rounded" x-text="editorSaveFeedback.state === 'saved' ? 'check' : (editorSaveFeedback.state === 'saving' ? 'progress_activity' : 'save')"></span>
+                <button class="term-btn primary editor-save-btn" @click.stop="saveEditor()" :disabled="editorSaveFeedback.state === 'saving'">
+                  <span x-text="editorSaveFeedback.state === 'saved' ? '[ Saved ✓ ]' : (editorSaveFeedback.state === 'saving' ? '[ Saving... ]' : '[ Save ]')"></span>
                 </button>
-                <button class="icon-btn" @click.stop="minimizeEditor()" title="最小化"><span class="material-symbols-rounded">minimize</span></button>
-                <button class="icon-btn" @click.stop="toggleEditorMaximize()" :title="editorWindow.maximized ? '还原' : '最大化'"><span class="material-symbols-rounded" x-text="editorWindow.maximized ? 'filter_none' : 'crop_square'"></span></button>
-                <button class="icon-btn" @click.stop="closeEditorTab(activeEditorTabId)" title="关闭"><span class="material-symbols-rounded">close</span></button>
+                <button class="term-btn" @click.stop="minimizeEditor()">[ Min ]</button>
+                <button class="term-btn" @click.stop="toggleEditorMaximize()" x-text="editorWindow.maximized ? '[ Restore ]' : '[ Max ]'"></button>
+                <button class="term-btn" @click.stop="closeEditorTab(activeEditorTabId)">[ Close X ]</button>
               </div>
             </div>
             <template x-if="activeEditorTab">
@@ -403,14 +562,16 @@
           </div>
         </div>
 
+        <!-- File Explorer Context Menu -->
         <div x-show="contextMenu.visible" :style="`left:${contextMenu.x}px;top:${contextMenu.y}px`" class="context-menu" @click.stop>
-          <button @click="copyEntry()">复制</button>
-          <button @click="cutEntry()">剪切</button>
-          <button @click="pasteClipboard()">粘贴</button>
-          <button x-show="contextMenu.entry && !contextMenu.entry.isDir" @click="readFile(contextMenu.entry.filename); hideContextMenu()">编辑</button>
-          <button x-show="contextMenu.entry && !contextMenu.entry.isDir" @click="downloadEntry(contextMenu.entry); hideContextMenu()">下载</button>
-          <button class="danger-text" x-show="contextMenu.entry" @click="removeEntry(contextMenu.entry); hideContextMenu()">删除</button>
+          <button @click="copyEntry()">[ Copy ]</button>
+          <button @click="cutEntry()">[ Cut ]</button>
+          <button @click="pasteClipboard()">[ Paste ]</button>
+          <button x-show="contextMenu.entry && !contextMenu.entry.isDir" @click="readFile(contextMenu.entry.filename); hideContextMenu()">[ Edit / View ]</button>
+          <button x-show="contextMenu.entry && !contextMenu.entry.isDir" @click="downloadEntry(contextMenu.entry); hideContextMenu()">[ Download ]</button>
+          <button class="danger-text" x-show="contextMenu.entry" @click="removeEntry(contextMenu.entry); hideContextMenu()">[ Delete ]</button>
         </div>
+
       </div>
     </template>
   </div>
@@ -426,7 +587,7 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/app.js?v=20260825_nova_ui"></script>
+  <script src="/assets/js/app.js?v=20260825_term_v2"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>
