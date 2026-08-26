@@ -1,12 +1,22 @@
 function shadowApp() {
+  const cachedAuth = localStorage.getItem('slate_auth') === 'true';
+  let cachedConnections = [];
+  try {
+    cachedConnections = JSON.parse(localStorage.getItem('slate_connections_cache') || '[]');
+  } catch (_) {}
+
   return {
-    booting: true,
+    booting: !cachedAuth,
     needsSetup: false,
-    authenticated: false,
+    authenticated: cachedAuth,
     currentUser: null,
     error: '',
-    connections: [],
+    connections: cachedConnections,
     sessions: [],
+    spinnerFrames: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+    spinnerIndex: 0,
+    currentSpinner: '⠋',
+    spinnerTimer: null,
     terminals: {},
     rdpClients: {},
     rdpKeyboards: {},
@@ -396,17 +406,32 @@ function shadowApp() {
         this.stopEditorResize();
       });
 
+      // Start global animated spinner ticker (80ms interval)
+      if (this.spinnerTimer) clearInterval(this.spinnerTimer);
+      this.spinnerTimer = setInterval(() => {
+        this.spinnerIndex = (this.spinnerIndex + 1) % this.spinnerFrames.length;
+        this.currentSpinner = this.spinnerFrames[this.spinnerIndex];
+      }, 80);
+
       try {
         const needsSetupResp = await fetch('/api/v1/auth/needs-setup');
         this.needsSetup = (await needsSetupResp.json()).needsSetup;
-        const authResp = await fetch('/api/v1/auth/status');
-        const authData = await authResp.json();
-        this.authenticated = !!authData.isAuthenticated;
-        this.currentUser = authData.user || null;
-        if (this.authenticated) {
-          await this.loadSettings();
-          await this.refreshConnections();
-          this.connectSocket().catch(() => {});
+        if (this.needsSetup) {
+          this.authenticated = false;
+          localStorage.removeItem('slate_auth');
+        } else {
+          const authResp = await fetch('/api/v1/auth/status');
+          const authData = await authResp.json();
+          this.authenticated = !!authData.isAuthenticated;
+          this.currentUser = authData.user || null;
+          if (this.authenticated) {
+            localStorage.setItem('slate_auth', 'true');
+            await this.loadSettings();
+            await this.refreshConnections();
+            this.connectSocket().catch(() => {});
+          } else {
+            localStorage.removeItem('slate_auth');
+          }
         }
       } catch (error) {
         this.error = error.message || String(error);
@@ -449,6 +474,7 @@ function shadowApp() {
         }
         this.authenticated = true;
         this.currentUser = data.user;
+        localStorage.setItem('slate_auth', 'true');
         await this.loadSettings();
         await this.refreshConnections();
         this.connectSocket().catch(() => {});
@@ -458,7 +484,14 @@ function shadowApp() {
     },
 
     async logout() {
-      await fetch('/api/v1/auth/logout', { method: 'POST' });
+      try {
+        localStorage.removeItem('slate_auth');
+        localStorage.removeItem('slate_connections_cache');
+        await fetch('/api/v1/auth/logout', { method: 'POST' });
+      } catch (_) {}
+      this.authenticated = false;
+      this.sessions = [];
+      this.activeSessionId = null;
       window.location.reload();
     },
 
@@ -497,7 +530,13 @@ function shadowApp() {
       const resp = await fetch('/api/v1/connections');
       if (!resp.ok) return;
       const data = await resp.json();
-      this.connections = data.map(c => ({ ...c, connecting: false }));
+      this.connections = data.map(c => {
+        const existing = this.connections.find(old => old.id === c.id);
+        return { ...c, connecting: existing?.connecting || false };
+      });
+      try {
+        localStorage.setItem('slate_connections_cache', JSON.stringify(this.connections));
+      } catch (_) {}
     },
 
     newConnection(type = 'SSH', source = 'sidebar') {
@@ -671,8 +710,17 @@ function shadowApp() {
         if (connId) {
           const connection = this.connections.find(c => c.id === connId);
           if (connection) connection.connecting = false;
+          const pendingTab = this.sessions.find(x => x.connectionId === connId && x.connecting);
+          if (pendingTab) {
+            pendingTab.connecting = false;
+            pendingTab.error = message.payload?.message || '连接失败';
+          }
         } else {
           this.connections.forEach(c => c.connecting = false);
+          this.sessions.filter(s => s.connecting).forEach(s => {
+            s.connecting = false;
+            s.error = message.payload?.message || '连接失败';
+          });
         }
       }
       if (message.type === 'status_update') {
@@ -683,25 +731,42 @@ function shadowApp() {
         this.testMessageType = 'error';
       }
       if (message.type === 'ssh:connected') {
-        const tab = {
-          id: message.sessionId || message.payload.sessionId,
-          name: this.connections.find(c => c.id === Number(message.payload.connectionId))?.name || 'SSH',
-          connectionId: Number(message.payload.connectionId),
-          type: 'SSH',
-          connected: true
-        };
-        const existing = this.sessions.find(x => x.id === tab.id);
-        if (!existing) this.sessions.push(tab); else existing.connected = true;
         const connId = Number(message.payload.connectionId);
+        const realSessionId = message.sessionId || message.payload.sessionId;
         const connection = this.connections.find(c => c.id === connId);
         if (connection) {
           connection.connecting = false;
         }
-        this.activeSessionId = tab.id;
+
+        let tab = this.sessions.find(x => (x.connectionId === connId && x.connecting) || x.id === realSessionId);
+        if (tab) {
+          const oldId = tab.id;
+          tab.id = realSessionId;
+          tab.connected = true;
+          tab.connecting = false;
+          tab.error = null;
+          if (this.activeSessionId === oldId) {
+            this.activeSessionId = realSessionId;
+          }
+        } else {
+          tab = {
+            id: realSessionId,
+            name: connection?.name || 'SSH',
+            connectionId: connId,
+            type: 'SSH',
+            connected: true,
+            connecting: false,
+            error: null
+          };
+          this.sessions.push(tab);
+          this.activeSessionId = tab.id;
+        }
         this.activePath = '.';
         this.files = [];
         this.pendingPasteTarget = null;
-        queueMicrotask(() => this.mountTerminal(tab.id));
+        this.$nextTick(() => {
+          this.mountTerminal(tab.id);
+        });
         setTimeout(() => this.refreshFiles(), 80);
       }
 
@@ -779,12 +844,80 @@ function shadowApp() {
       }
     },
 
+    getConnectingElapsed(tab) {
+      if (!tab.connectingStart) return '0.0s';
+      const sec = ((Date.now() - tab.connectingStart) / 1000).toFixed(1);
+      return `${sec}s`;
+    },
+
+    getConnectingStep(tab) {
+      if (!tab.connectingStart) return 0;
+      const elapsed = Date.now() - tab.connectingStart;
+      if (elapsed < 600) return 0;
+      if (elapsed < 1400) return 1;
+      if (elapsed < 2600) return 2;
+      return 3;
+    },
+
+    getConnectingStatusText(tab) {
+      const step = this.getConnectingStep(tab);
+      if (step === 0) return 'Resolving host address & initializing socket...';
+      if (step === 1) return 'TCP SYN-ACK handshake to port ' + (tab.port || 22) + '...';
+      if (step === 2) return 'SSH-2.0 protocol negotiation & Diffie-Hellman key exchange...';
+      return 'Authenticating credentials & allocating interactive PTY...';
+    },
+
+    async retryConnection(tab) {
+      tab.connecting = true;
+      tab.error = null;
+      tab.connectingStart = Date.now();
+      const connection = this.connections.find(c => c.id === tab.connectionId);
+      if (connection) connection.connecting = true;
+      this.testMessage = `正在重新连接 ${tab.name}...`;
+      this.testMessageType = 'info';
+      await this.sendSocket({ type: 'ssh:connect', payload: { connectionId: tab.connectionId } });
+    },
+
+    cancelConnectingSession(tab) {
+      this.closeTab(tab.id);
+    },
+
     async openSession(connection) {
       if ((connection.type || 'SSH') === 'RDP') {
         await this.openRdpSession(connection);
         return;
       }
+
+      const existingConnected = this.sessions.find(tab => tab.connectionId === connection.id && tab.connected);
+      if (existingConnected) {
+        this.activateSession(existingConnected.id);
+        return;
+      }
+
+      const existingConnecting = this.sessions.find(tab => tab.connectionId === connection.id && tab.connecting);
+      if (existingConnecting) {
+        this.activateSession(existingConnecting.id);
+        return;
+      }
+
       connection.connecting = true;
+      const tempId = 'conn-' + connection.id + '-' + Date.now();
+      const tab = {
+        id: tempId,
+        tempId: tempId,
+        connectionId: connection.id,
+        name: connection.name || connection.host || 'SSH',
+        type: 'SSH',
+        connecting: true,
+        connected: false,
+        connectingStart: Date.now(),
+        host: connection.host,
+        port: connection.port || 22,
+        username: connection.username || 'root',
+        error: null
+      };
+      this.sessions.push(tab);
+      this.activeSessionId = tempId;
       this.testMessage = `正在连接 ${connection.name || connection.host}...`;
       this.testMessageType = 'info';
       await this.sendSocket({ type: 'ssh:connect', payload: { connectionId: connection.id } });
@@ -1295,6 +1428,14 @@ function shadowApp() {
       this.refocusTerminal(true);
     },
 
+    closeTerminalPasteBox() {
+      this.terminalPasteBox.visible = false;
+      this.terminalPasteBox.text = '';
+      this.$nextTick(() => {
+        this.refocusTerminal(true);
+      });
+    },
+
     openTerminalPasteBox() {
       this.terminalPasteBox.text = '';
       this.terminalPasteBox.visible = true;
@@ -1307,12 +1448,15 @@ function shadowApp() {
 
     async sendTerminalPasteText() {
       const text = this.terminalPasteBox.text;
-      if (text && this.activeSessionId) {
-        this.pasteTextToSession(this.activeSessionId, text);
-      }
+      const targetSessionId = this.activeSessionId;
       this.terminalPasteBox.visible = false;
       this.terminalPasteBox.text = '';
-      this.refocusTerminal();
+      if (text && targetSessionId) {
+        this.pasteTextToSession(targetSessionId, text);
+      }
+      this.$nextTick(() => {
+        this.refocusTerminal(true);
+      });
     },
 
     async refreshFiles() {
@@ -1988,14 +2132,26 @@ function shadowApp() {
     },
 
     refocusTerminal(force = false) {
-      if (!this.isMobile || !this.activeSessionId || !this.terminals[this.activeSessionId] || this.terminalPasteBox.visible) return;
+      if (!this.activeSessionId) return;
+      const id = this.activeSessionId;
+      const term = this.terminals[id];
+      if (!term) return;
+
       const focus = () => {
-        try { this.terminals[this.activeSessionId]?.focus(); } catch (_) {}
+        try {
+          term.focus();
+          const helperTextarea = document.querySelector(`#terminal-${id} .xterm-helper-textarea`);
+          if (helperTextarea) {
+            helperTextarea.focus();
+          }
+        } catch (_) {}
       };
+
       if (force) focus();
       requestAnimationFrame(focus);
-      setTimeout(focus, 20);
-      setTimeout(focus, 90);
+      setTimeout(focus, 10);
+      setTimeout(focus, 50);
+      setTimeout(focus, 150);
     },
 
     terminalMobileButton(action, payload = '') {

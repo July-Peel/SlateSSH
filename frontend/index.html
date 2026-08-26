@@ -15,21 +15,14 @@
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" sizes="180x180">
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260825_term_v8">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260826_term_v9">
 </head>
 <body class="term-body">
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-dark'">
     
-    <!-- Booting screen -->
-    <template x-if="booting">
+    <!-- Booting screen (only when not authenticated) -->
+    <template x-if="booting && !authenticated && !needsSetup">
       <div class="auth-page term-page">
-        <pre class="term-ascii-banner">
-  ____  _       _       ____ ____  _   _ 
- / ___|| | __ _| |_ ___/ ___/ ___|| | | |
- \___ \| |/ _` | __/ _ \___ \___ \| |_| |
-  ___) | | (_| | ||  __/___) |__) |  _  |
- |____/|_|\__,_|\__\___|____/____/|_| |_|
-</pre>
         <div class="term-boot-line">
           <span class="term-prompt">system:</span> Initializing SlateSSH secure terminal gateway...<span class="term-cursor">_</span>
         </div>
@@ -135,7 +128,7 @@
     </template>
 
     <!-- Main Workspace Area -->
-    <template x-if="!booting && authenticated">
+    <template x-if="authenticated">
       <div class="workspace-root">
 
         <!-- INITIAL STATE: Borderless Seamless Host Launcher when no active session -->
@@ -178,7 +171,10 @@
                         <span class="col-dest" x-text="(connection.username || 'root') + '@' + connection.host + ':' + connection.port"></span>
                       </div>
                       <div class="col-act" @click.stop>
-                        <button class="term-btn primary" @click="openSession(connection)">[ Connect ]</button>
+                        <button class="term-btn primary" @click="openSession(connection)" :disabled="connection.connecting">
+                          <span x-show="!connection.connecting">[ Connect ]</span>
+                          <span x-show="connection.connecting" x-text="'[ ' + currentSpinner + ' Connecting... ]'"></span>
+                        </button>
                         <button class="term-btn" @click="testSavedConnection(connection.id)">[ Test ]</button>
                         <button class="term-btn" @click="editConnection(connection, 'manager')">[ Edit ]</button>
                       </div>
@@ -218,7 +214,7 @@
                 <template x-for="connection in filteredConnections" :key="connection.id">
                   <div class="connection-item" :class="isConnectionActive(connection) ? 'active' : ''" @click="openSession(connection)">
                     <div class="connection-main">
-                      <span class="term-badge" x-text="connection.type || 'SSH'"></span>
+                      <span class="term-badge" x-text="connection.connecting ? currentSpinner : (connection.type || 'SSH')"></span>
                       <span class="item-name" x-text="connection.name"></span>
                     </div>
                     <div class="connection-tools">
@@ -250,7 +246,7 @@
                   <div class="tab-wrapper" :class="activeSessionId === tab.id ? 'active' : ''">
                     <button @click="activateSession(tab.id)" class="tab" :class="activeSessionId === tab.id ? 'active' : ''">
                       <span class="tab-badge" x-text="'#' + (idx + 1)"></span>
-                      <span class="tab-type" x-text="'[' + (tab.type || 'SSH') + ']'"></span>
+                      <span class="tab-type" x-text="'[' + (tab.connecting ? currentSpinner : (tab.type || 'SSH')) + ']'"></span>
                       <span class="tab-name" x-text="tab.name"></span>
                       <span class="tab-close" @click.stop="closeTab(tab.id)">[x]</span>
                     </button>
@@ -301,20 +297,87 @@
 
                 <div x-show="terminalPasteBox.visible" class="terminal-paste-popover" @click.stop>
                   <div class="terminal-paste-head">=== PASTE TEXT TO PTY ===</div>
-                  <textarea x-model="terminalPasteBox.text" placeholder="Type or paste commands here..." class="term-textarea"></textarea>
+                  <textarea x-model="terminalPasteBox.text" placeholder="Type or paste commands here..." class="term-textarea" @keydown.ctrl.enter.prevent="sendTerminalPasteText()" @keydown.meta.enter.prevent="sendTerminalPasteText()"></textarea>
                   <div class="terminal-paste-actions">
-                    <button class="term-btn" @click="terminalPasteBox.visible = false">[ Cancel ]</button>
+                    <button class="term-btn" @click="closeTerminalPasteBox()">[ Cancel ]</button>
                     <button class="term-btn primary" @click="sendTerminalPasteText()">[ Send to PTY ]</button>
                   </div>
                 </div>
 
                 <template x-for="tab in sessions" :key="tab.id + '-terminal'">
                   <div x-show="activeSessionId === tab.id" class="terminal-wrap">
-                    <template x-if="tab.type === 'RDP'">
-                      <div class="rdp-surface" :id="'rdp-' + tab.id"></div>
+                    
+                    <!-- Terminal Connecting Live Linux Progress Animation -->
+                    <template x-if="tab.connecting || tab.error">
+                      <div class="terminal-connecting-screen">
+                        <div class="conn-term-card">
+                          
+                          <div class="conn-header">
+                            <span class="term-prompt">ssh:</span> Connecting to <strong x-text="(tab.username || 'root') + '@' + (tab.host || 'host') + ':' + (tab.port || 22)"></strong>
+                          </div>
+
+                          <template x-if="tab.connecting">
+                            <div class="conn-body">
+                              <div class="conn-progress-bar">
+                                <span class="conn-spinner-glyph" x-text="currentSpinner"></span>
+                                <span class="conn-progress-label" x-text="getConnectingStatusText(tab)"></span>
+                                <span class="conn-timer-badge" x-text="'[' + getConnectingElapsed(tab) + ']'"></span>
+                              </div>
+
+                              <div class="conn-timeline">
+                                <div class="conn-step done">
+                                  <span class="step-icon">[✓]</span>
+                                  <span class="step-text">Parsed target host profile (<span x-text="tab.name"></span>)</span>
+                                </div>
+                                <div class="conn-step" :class="getConnectingStep(tab) >= 1 ? 'done' : 'active'">
+                                  <span class="step-icon" x-text="getConnectingStep(tab) >= 1 ? '[✓]' : '[' + currentSpinner + ']'"></span>
+                                  <span class="step-text">TCP connection established to <span x-text="(tab.host || '') + ':' + (tab.port || 22)"></span></span>
+                                </div>
+                                <div class="conn-step" :class="getConnectingStep(tab) >= 2 ? 'done' : (getConnectingStep(tab) === 1 ? 'active' : 'pending')">
+                                  <span class="step-icon" x-text="getConnectingStep(tab) >= 2 ? '[✓]' : (getConnectingStep(tab) === 1 ? '[' + currentSpinner + ']' : '[ ]')"></span>
+                                  <span class="step-text">SSH-2.0 handshake & cipher suite agreement</span>
+                                </div>
+                                <div class="conn-step" :class="getConnectingStep(tab) >= 3 ? 'done' : (getConnectingStep(tab) === 2 ? 'active' : 'pending')">
+                                  <span class="step-icon" x-text="getConnectingStep(tab) >= 3 ? '[✓]' : (getConnectingStep(tab) === 2 ? '[' + currentSpinner + ']' : '[ ]')"></span>
+                                  <span class="step-text">User authentication & remote PTY allocation</span>
+                                </div>
+                              </div>
+
+                              <div class="conn-footer">
+                                <button class="term-btn" @click="closeTab(tab.id)">[ Cancel Connection ]</button>
+                              </div>
+                            </div>
+                          </template>
+
+                          <template x-if="tab.error">
+                            <div class="conn-error-body">
+                              <div class="conn-error-banner">
+                                <span class="term-prompt error">[ERROR]:</span>
+                                <span class="error-msg-text" x-text="tab.error"></span>
+                              </div>
+                              <div class="conn-error-hints">
+                                Remote host did not respond or authentication rejected. Please check network, port and credentials.
+                              </div>
+                              <div class="conn-footer">
+                                <button class="term-btn primary" @click="retryConnection(tab)">[ Retry Connection ]</button>
+                                <button class="term-btn" @click="closeTab(tab.id)">[ Close Tab ]</button>
+                              </div>
+                            </div>
+                          </template>
+
+                        </div>
+                      </div>
                     </template>
-                    <template x-if="tab.type !== 'RDP'">
-                      <div :id="'terminal-' + tab.id" class="terminal-surface"></div>
+
+                    <template x-if="!tab.connecting && !tab.error">
+                      <div style="width:100%;height:100%;">
+                        <template x-if="tab.type === 'RDP'">
+                          <div class="rdp-surface" :id="'rdp-' + tab.id"></div>
+                        </template>
+                        <template x-if="tab.type !== 'RDP'">
+                          <div :id="'terminal-' + tab.id" class="terminal-surface"></div>
+                        </template>
+                      </div>
                     </template>
                   </div>
                 </template>
@@ -690,7 +753,7 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/app.js?v=20260825_term_v5"></script>
+  <script src="/assets/js/app.js?v=20260826_term_v7"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>
