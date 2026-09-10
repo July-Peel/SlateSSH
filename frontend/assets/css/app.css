@@ -1064,26 +1064,81 @@ button.tab.active {
 
 .terminal-mobile-bar {
   display: flex;
-  gap: 4px;
-  padding: 4px 6px;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
   background: #0d1117;
-  border-top: 1px solid var(--term-border-dim);
+  border-top: 1px solid var(--term-border);
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  user-select: none;
+  -webkit-user-select: none;
+  flex-shrink: 0;
+  z-index: 40;
 }
 
-.terminal-mobile-bar button {
-  padding: 4px 8px;
-  border: 1px solid var(--term-border-dim);
+.terminal-mobile-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.terminal-mobile-bar .mob-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-width: 34px;
+  padding: 0 8px;
   background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
   color: var(--term-text);
-  font-size: 11px;
-  border-radius: 2px;
+  font-family: var(--font-mono) !important;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease, transform 0.05s ease;
 }
 
-.terminal-mobile-bar button.active {
+.terminal-mobile-bar .mob-btn:active,
+.terminal-mobile-bar .mob-btn.touch-active {
+  background: #232931;
+  border-color: var(--term-green);
+  color: #ffffff;
+  transform: translateY(1px);
+}
+
+.terminal-mobile-bar .mob-btn.active {
   background: var(--term-green);
+  border-color: var(--term-green);
   color: #000000;
+  font-weight: 700;
+  box-shadow: 0 0 8px var(--term-green-glow);
+}
+
+.terminal-mobile-bar .mob-btn.danger {
+  color: var(--term-red);
+}
+
+.terminal-mobile-bar .mob-btn.danger:active,
+.terminal-mobile-bar .mob-btn.danger.touch-active {
+  background: rgba(255, 123, 114, 0.2);
+  border-color: var(--term-red);
+}
+
+.terminal-mobile-bar .mob-btn.primary {
+  color: var(--term-hl);
+}
+
+.terminal-mobile-bar .mob-btn.kb-toggle {
+  color: var(--term-amber);
 }
 
 /* ─── Right Panel: SFTP & Status ─── */

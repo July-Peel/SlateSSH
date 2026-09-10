@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" sizes="180x180">
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260826_term_v9">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260910_mob_v1">
 </head>
 <body class="term-body">
   <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-dark'">
@@ -260,12 +260,10 @@
               </div>
 
               <!-- Terminal Command Bar -->
-              <div class="terminal-commandbar" x-show="activeSessionId">
+              <div class="terminal-commandbar" x-show="activeSessionId && (!isMobile || !isKeyboardOpen)">
                 <button class="term-btn" @click="openTerminalCopyViewer()">[ Copy ]</button>
                 <button class="term-btn" @click="openTerminalPasteBox()">[ Paste ]</button>
                 <button class="term-btn" @click="clearActiveTerminal()">[ Clear ]</button>
-                <button class="term-btn primary" x-show="isMobile" @click="showMobileSftp = true; rightTab = 'files'">[ Files ]</button>
-                <button class="term-btn" x-show="isMobile" @click="showMobileStatus = true; rightTab = 'status'">[ Stats ]</button>
                 <div class="terminal-search-box" x-show="!isMobile">
                   <span class="term-prompt">find:</span>
                   <input x-model="terminalSearch" @keydown.enter="searchTerminal()" placeholder="search terminal buffer..." class="term-input">
@@ -384,20 +382,23 @@
               </div>
 
               <!-- Mobile command helper bar -->
-              <div class="terminal-mobile-bar" x-show="isMobile && activeSessionId">
-                <button tabindex="-1" @pointerdown.prevent.stop="openTerminalCopyViewer()">[Copy]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="openTerminalPasteBox()">[Paste]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="showMobileSftp = true; rightTab = 'files'">[Files]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('ctrl')" :class="ctrlKeyActive ? 'active' : ''">[Ctrl]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b')">[Esc]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x09')">[Tab]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[A')">[^]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[B')">[v]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[D')">[&lt;]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '\x1b[C')">[&gt;]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '/')">[/]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '-')">[-]</button>
-                <button tabindex="-1" @pointerdown.prevent.stop="terminalMobileButton('quick', '|')">[|]</button>
+              <div class="terminal-mobile-bar" x-show="isMobile && activeSessionId" x-init="setupMobileBar($el)" @click="handleMobileBarClick($event)">
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b" title="Escape">ESC</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x09" title="Tab">TAB</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="ctrl" :class="ctrlKeyActive ? 'active' : ''" title="Ctrl modifier">CTRL</button>
+                <button type="button" tabindex="-1" class="mob-btn danger" data-action="quick" data-payload="\x03" title="Interrupt (Ctrl+C)">^C</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b[A" title="Up Arrow">↑</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b[B" title="Down Arrow">↓</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b[D" title="Left Arrow">←</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b[C" title="Right Arrow">→</button>
+                <button type="button" tabindex="-1" class="mob-btn primary" data-action="paste" title="Paste Clipboard">PASTE</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="/" title="Slash">/</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="~" title="Tilde">~</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="-" title="Hyphen">-</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="|" title="Pipe">|</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="copy" title="Copy Buffer">COPY</button>
+                <button type="button" tabindex="-1" class="mob-btn" data-action="files" title="Remote Files">FILES</button>
+                <button type="button" tabindex="-1" class="mob-btn kb-toggle" data-action="keyboard" x-text="isKeyboardOpen ? '⌨ HIDE' : '⌨ SHOW'" title="Toggle Virtual Keyboard">⌨</button>
               </div>
             </section>
             <!-- RIGHT PANEL: SFTP & Server Status -->
@@ -753,7 +754,7 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/app.js?v=20260826_term_v7"></script>
+  <script src="/assets/js/app.js?v=20260910_mob_v1"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>

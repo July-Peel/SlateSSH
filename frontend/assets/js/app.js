@@ -88,6 +88,7 @@ function shadowApp() {
     loginForm: { username: '', password: '', rememberMe: false },
     connectionForm: { id: null, name: '', type: 'SSH', host: '', port: 22, username: 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' },
     isMobile: window.innerWidth <= 760,
+    isKeyboardOpen: false,
     showMobileSftp: false,
     showMobileStatus: false,
     showMobileMenu: false,
@@ -277,6 +278,7 @@ function shadowApp() {
           // Track keyboard offset for CSS awareness
           const keyboardOffset = window.innerHeight - vvh;
           document.documentElement.style.setProperty('--keyboard-offset', `${Math.max(0, keyboardOffset)}px`);
+          this.isKeyboardOpen = keyboardOffset > 80;
 
           // Only resize terminal when authenticated and terminal is active
           if (this.authenticated && this.activeSessionId && this.activeSessionType() !== 'RDP') {
@@ -1123,11 +1125,6 @@ function shadowApp() {
           this.ctrlKeyActive = false;
         }
         this.sendSocket({ type: 'ssh:input', sessionId: id, payload: { data: payloadData } });
-      });
-      term.textarea?.addEventListener('blur', () => {
-        if (!this.isMobile || !this.activeSessionId || this.terminalPasteBox.visible || this.terminalCopyViewer.visible) return;
-        clearTimeout(this._terminalFocusTimer);
-        this._terminalFocusTimer = setTimeout(() => this.refocusTerminal(true), 40);
       });
       
       let selecting = false;
@@ -2154,15 +2151,142 @@ function shadowApp() {
       setTimeout(focus, 150);
     },
 
+    setupMobileBar(barEl) {
+      if (!barEl || barEl._mobileBarInit) return;
+      barEl._mobileBarInit = true;
+
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let scrollStartLeft = 0;
+      let isDragging = false;
+      let activeBtn = null;
+
+      barEl.addEventListener('touchstart', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        // Crucial for iOS WebKit: calling preventDefault stops the virtual keyboard from dismissing/blurring!
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        scrollStartLeft = barEl.scrollLeft;
+        isDragging = false;
+        activeBtn = btn;
+        btn.classList.add('touch-active');
+      }, { passive: false });
+
+      barEl.addEventListener('touchmove', (e) => {
+        if (!activeBtn) return;
+        const touch = e.touches[0];
+        const dx = touch.clientX - touchStartX;
+        const dy = touch.clientY - touchStartY;
+
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          isDragging = true;
+          activeBtn.classList.remove('touch-active');
+        }
+
+        if (isDragging) {
+          if (e.cancelable) e.preventDefault();
+          barEl.scrollLeft = scrollStartLeft - dx;
+        }
+      }, { passive: false });
+
+      const endTouch = (e) => {
+        if (activeBtn) {
+          activeBtn.classList.remove('touch-active');
+          if (!isDragging) {
+            const action = activeBtn.getAttribute('data-action');
+            const payload = activeBtn.getAttribute('data-payload') || '';
+            if (action) {
+              this.handleMobileBarButton(action, payload, e);
+            }
+          }
+          activeBtn = null;
+        }
+        isDragging = false;
+      };
+
+      barEl.addEventListener('touchend', endTouch, { passive: false });
+      barEl.addEventListener('touchcancel', () => {
+        if (activeBtn) activeBtn.classList.remove('touch-active');
+        activeBtn = null;
+        isDragging = false;
+      }, { passive: true });
+
+      // For desktop mouse interaction: prevent default to avoid stealing focus
+      barEl.addEventListener('mousedown', (e) => {
+        const btn = e.target.closest('button');
+        if (btn && e.cancelable) {
+          e.preventDefault();
+        }
+      });
+    },
+
+    handleMobileBarClick(e) {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const action = btn.getAttribute('data-action');
+      const payload = btn.getAttribute('data-payload') || '';
+      if (action) {
+        this.handleMobileBarButton(action, payload, e);
+      }
+    },
+
+    handleMobileBarButton(action, payload = '', event = null) {
+      if (event) {
+        if (typeof event.preventDefault === 'function' && event.cancelable !== false) {
+          event.preventDefault();
+        }
+        if (typeof event.stopPropagation === 'function') {
+          event.stopPropagation();
+        }
+      }
+
+      // De-duplicate multi-events (e.g. touchend followed by click)
+      const now = Date.now();
+      if (this._lastMobileBtnTime && (now - this._lastMobileBtnTime < 180)) {
+        return;
+      }
+      this._lastMobileBtnTime = now;
+
+      // Haptic feedback if supported (iOS WebKit / Android)
+      if (navigator.vibrate) {
+        try { navigator.vibrate(10); } catch (_) {}
+      }
+
+      this.terminalMobileButton(action, payload);
+    },
+
+    toggleMobileKeyboard() {
+      if (!this.activeSessionId) return;
+      const id = this.activeSessionId;
+      const helperTextarea = document.querySelector(`#terminal-${id} .xterm-helper-textarea`);
+      if (this.isKeyboardOpen) {
+        if (helperTextarea) {
+          helperTextarea.blur();
+        }
+      } else {
+        this.refocusTerminal(true);
+      }
+    },
+
     terminalMobileButton(action, payload = '') {
-      this.refocusTerminal(true);
-      if (action === 'copy') {
+      if (action === 'keyboard') {
+        this.toggleMobileKeyboard();
+      } else if (action === 'files') {
+        this.showMobileSftp = true;
+        this.rightTab = 'files';
+      } else if (action === 'copy') {
         this.openTerminalCopyViewer();
       } else if (action === 'paste') {
         this.mobileTerminalPaste();
       } else if (action === 'ctrl') {
         this.ctrlKeyActive = !this.ctrlKeyActive;
-        this.refocusTerminal(true);
+        if (this.ctrlKeyActive && !this.isKeyboardOpen) {
+          this.refocusTerminal(true);
+        }
       } else if (action === 'quick') {
         this.sendQuick(payload);
       }
@@ -2174,7 +2298,6 @@ function shadowApp() {
         const text = await navigator.clipboard.readText();
         if (text) {
           this.pasteTextToSession(this.activeSessionId, text);
-          this.refocusTerminal(true);
           return;
         }
         this.openTerminalPasteBox();
@@ -2198,7 +2321,6 @@ function shadowApp() {
       } else {
         await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: command } });
       }
-      this.refocusTerminal(true);
     },
 
     percent(value) {
