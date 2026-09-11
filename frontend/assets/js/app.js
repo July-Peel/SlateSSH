@@ -85,48 +85,132 @@ function shadowApp() {
     monacoInitTimer: null,
     isMonacoUpdating: false,
     setupForm: { username: '', password: '', confirmPassword: '' },
-    loginForm: { username: '', password: '', rememberMe: false },
+    loginForm: { username: '', password: '', rememberMe: true },
     connectionForm: { id: null, name: '', type: 'SSH', host: '', port: 22, username: 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' },
-    isMobile: window.innerWidth <= 760,
+    isMobile: window.matchMedia('(max-width: 1023px), (pointer: coarse) and (max-height: 500px)').matches,
+    isOnline: navigator.onLine,
+    isStandalone: window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+    secureContext: window.isSecureContext,
+    showInstallHelp: false,
+    updateAvailable: false,
+    authSubmitting: false,
+    showMobileTools: false,
+    terminalObservers: {},
     isKeyboardOpen: false,
     showMobileSftp: false,
     showMobileStatus: false,
     showMobileMenu: false,
     ctrlKeyActive: false,
 
-    focusLoginInput() {
-      if (this.authenticated || this.booting || this.needsSetup) return;
-      const targetId = this.loginStep === 'password' ? 'term-login-password' : 'term-login-username';
-      const doFocus = () => {
-        const el = document.getElementById(targetId);
-        if (el) {
-          el.focus();
-          const len = el.value ? el.value.length : 0;
-          if (typeof el.setSelectionRange === 'function') {
-            try { el.setSelectionRange(len, len); } catch (_) {}
-          }
-        }
-      };
-      this.$nextTick(doFocus);
-      setTimeout(doFocus, 30);
-      setTimeout(doFocus, 120);
+    focusLoginInput(force = false) {
+      if ((this.isMobile && !force) || this.authenticated || this.booting || this.needsSetup) return;
+      this.$nextTick(() => {
+        const targetId = this.loginStep === 'password' ? 'term-login-password' : 'term-login-username';
+        document.getElementById(targetId)?.focus({ preventScroll: true });
+      });
     },
 
-    submitUsername() {
-      if (!this.loginForm.username || !this.loginForm.username.trim()) {
-        this.error = 'login as: username required';
-        this.focusLoginInput();
+    handleUsernameSubmit() {
+      const username = (this.loginForm.username || '').trim();
+      if (!username) {
+        this.focusLoginInput(true);
         return;
       }
-      this.error = '';
       this.loginStep = 'password';
-      this.focusLoginInput();
+      this.error = '';
+      this.$nextTick(() => {
+        document.getElementById('term-login-password')?.focus({ preventScroll: true });
+      });
     },
 
-    backToUsername() {
+    resetLoginStep() {
       this.loginStep = 'username';
+      this.loginForm.password = '';
       this.error = '';
-      this.focusLoginInput();
+      this.$nextTick(() => {
+        document.getElementById('term-login-username')?.focus({ preventScroll: true });
+      });
+    },
+
+    async installApp() {
+      const prompt = window.slatePwa?.installPrompt;
+      if (prompt) {
+        await prompt.prompt();
+        await prompt.userChoice;
+        window.slatePwa.installPrompt = null;
+      } else {
+        this.showInstallHelp = true;
+      }
+    },
+
+    applyAppUpdate() {
+      if (!this.sessions.length) window.slatePwa?.applyUpdate();
+    },
+
+    openMobilePanel(panel) {
+      this.terminals[this.activeSessionId]?.blur();
+      this.showMobileMenu = panel === 'hosts';
+      this.showMobileTools = panel === 'tools';
+      this.showMobileSftp = panel === 'files';
+      this.showMobileStatus = panel === 'status';
+      if (panel === 'files') this.rightTab = 'files';
+      if (panel === 'status') this.rightTab = 'status';
+      if (panel === 'hosts' && !this.isMobile) this.showConnectionManager = true;
+    },
+
+    syncDialog(el, visible) {
+      if (!!el._dialogOpen === !!visible) return;
+      el._dialogOpen = !!visible;
+      if (visible) {
+        el._returnFocus = document.activeElement;
+        this.$nextTick(() => {
+          if (!el.contains(document.activeElement)) el.querySelector('button, input, textarea, select')?.focus({ preventScroll: true });
+        });
+      } else if (el._returnFocus?.isConnected) {
+        const target = el._returnFocus;
+        if (!(this.isMobile && target.matches('input, textarea'))) target.focus({ preventScroll: true });
+      }
+    },
+
+    setupViewport() {
+      const mobile = window.matchMedia('(max-width: 1023px), (pointer: coarse) and (max-height: 500px)');
+      const update = () => {
+        cancelAnimationFrame(this._viewportFrame);
+        this._viewportFrame = requestAnimationFrame(() => {
+          const vv = window.visualViewport;
+          if (vv && Math.abs(vv.scale - 1) > 0.02) return;
+          this.isMobile = mobile.matches;
+          const height = vv?.height || window.innerHeight;
+          const offset = vv?.offsetTop || 0;
+          const focusedInput = document.activeElement?.matches('input, textarea, [contenteditable="true"]');
+          const keyboard = this.isMobile && !!focusedInput && window.innerHeight - height > 100;
+          const root = document.documentElement.style;
+          root.setProperty('--vv-height', `${height}px`);
+          root.setProperty('--vv-top', `${offset}px`);
+          this.isKeyboardOpen = keyboard;
+          clearTimeout(this._resizeTimer);
+          this._resizeTimer = setTimeout(() => {
+            this.refreshActiveViewport();
+            this.clampEditorWindow();
+            const input = document.activeElement;
+            if (keyboard && input?.matches('input, textarea') && !input.closest('.xterm, .monaco-editor')) {
+              const rect = input.getBoundingClientRect();
+              if (rect.bottom > offset + height - 12 || rect.top < offset + 12) input.scrollIntoView({ block: 'nearest' });
+            }
+          }, 100);
+        });
+      };
+      window.addEventListener('resize', update);
+      window.visualViewport?.addEventListener('resize', update);
+      window.visualViewport?.addEventListener('scroll', update);
+      document.addEventListener('focusin', update);
+      document.addEventListener('focusout', update);
+      window.addEventListener('pageshow', update);
+      this.$watch('isMobile', value => {
+        for (const term of Object.values(this.terminals)) term.options.fontSize = value ? 13 : 14;
+        this.showMobileMenu = this.showMobileTools = false;
+      });
+      update();
     },
 
     get activeStatus() {
@@ -258,69 +342,17 @@ function shadowApp() {
     async init() {
       this._resizeTimer = null;
       this._focusTimer = null;
+      this.setupViewport();
 
-      window.addEventListener('resize', () => {
-        this.isMobile = window.innerWidth <= 760;
-        if (this.activeSessionType() === 'RDP' && this.activeSessionId) {
-          setTimeout(() => this.fitRdp(this.activeSessionId), 0);
-        } else if (this.activeSessionId) {
-          clearTimeout(this._resizeTimer);
-          this._resizeTimer = setTimeout(() => this.resizeActiveTerminal(this.activeSessionId), 80);
-        }
-        this.clampEditorWindow();
-      });
-
-      if (window.visualViewport) {
-        const updateVV = () => {
-          const vvh = window.visualViewport.height;
-          document.documentElement.style.setProperty('--vv-height', `${vvh}px`);
-
-          // Track keyboard offset for CSS awareness
-          const keyboardOffset = window.innerHeight - vvh;
-          document.documentElement.style.setProperty('--keyboard-offset', `${Math.max(0, keyboardOffset)}px`);
-          this.isKeyboardOpen = keyboardOffset > 80;
-
-          // Only resize terminal when authenticated and terminal is active
-          if (this.authenticated && this.activeSessionId && this.activeSessionType() !== 'RDP') {
-            clearTimeout(this._resizeTimer);
-            this._resizeTimer = setTimeout(() => {
-              this.resizeActiveTerminal(this.activeSessionId);
-              // Ensure cursor stays visible after keyboard open/close
-              try { this.terminals[this.activeSessionId]?.scrollToBottom?.(); } catch(_) {}
-            }, 60);
-          }
-        };
-        window.visualViewport.addEventListener('resize', updateVV);
-        window.visualViewport.addEventListener('scroll', () => {
-          if (window.scrollY !== 0) window.scrollTo(0, 0);
-          updateVV();
-        });
-        updateVV();
+      window.addEventListener('online', () => { this.isOnline = true; });
+      window.addEventListener('offline', () => { this.isOnline = false; });
+      window.addEventListener('slate:update-ready', () => { this.updateAvailable = true; });
+      if (window.slatePwa?.hasUpdate) {
+        this.updateAvailable = true;
       }
 
-      // Global focus listener for mobile viewport stability
-      document.addEventListener('focusin', (e) => {
-        if (!this.isMobile) return;
-        const tag = e.target.tagName;
-        const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.classList.contains('xterm-helper-textarea');
-        if (isInput) {
-          clearTimeout(this._focusTimer);
-          this._focusTimer = setTimeout(() => {
-            window.scrollTo(0, 0);
-            if (window.visualViewport) {
-              document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-            }
-          }, 150);
-        }
-      });
-
-      // Prevent page bounce / elastic scrolling on iOS Safari
+      // Prevent page bounce / elastic scrolling on iOS Safari while preserving inner scrollables
       document.addEventListener('touchmove', (e) => {
-        if (!this.authenticated) {
-          if (e.cancelable) e.preventDefault();
-          return;
-        }
-
         let target = e.target;
         let isScrollable = false;
         while (target && target !== document.body && target !== document.documentElement) {
@@ -349,34 +381,27 @@ function shadowApp() {
               target.closest('.terminal-paste-popover') ||
               target.closest('.editor-window') ||
               target.closest('.mobile-keyboard') ||
-              target.closest('.tabbar')) {
+              target.closest('.tabbar') ||
+              target.closest('.term-page') ||
+              target.closest('.auth-console') ||
+              target.closest('.centered-launcher-wrap') ||
+              target.closest('.modal-backdrop')) {
             isScrollable = true;
             break;
           }
           target = target.parentNode;
         }
-        if (!isScrollable) {
-          if (e.cancelable) {
-            e.preventDefault();
-          }
+        if (!isScrollable && e.cancelable) {
+          e.preventDefault();
         }
       }, { passive: false });
 
-      document.addEventListener('click', () => {
-        this.hideContextMenu();
-      });
-      document.addEventListener('mousemove', (event) => this.dragEditor(event));
-      document.addEventListener('mouseup', () => this.stopEditorDrag());
-      document.addEventListener('pointermove', (event) => {
-        this.dragEditor(event);
-        this.resizeEditor(event);
-      });
       document.addEventListener('click', (e) => {
         this.hideContextMenu();
         if (!this.authenticated && !this.booting && !this.needsSetup) {
           const target = e.target;
           if (target && target.tagName !== 'BUTTON' && target.type !== 'checkbox' && !target.closest('button') && !target.closest('label')) {
-            this.focusLoginInput();
+            this.focusLoginInput(true);
           }
         }
       });
@@ -397,8 +422,6 @@ function shadowApp() {
           }
         }
       });
-      document.addEventListener('mousemove', (event) => this.dragEditor(event));
-      document.addEventListener('mouseup', () => this.stopEditorDrag());
       document.addEventListener('pointermove', (event) => {
         this.dragEditor(event);
         this.resizeEditor(event);
@@ -455,12 +478,13 @@ function shadowApp() {
 
     async login() {
       this.error = '';
-      if (!this.loginForm.username || !this.loginForm.username.trim()) {
+      const username = (this.loginForm.username || '').trim();
+      if (!username) {
         this.loginStep = 'username';
-        this.error = 'login as: username required';
-        this.focusLoginInput();
+        this.focusLoginInput(true);
         return;
       }
+      this.authSubmitting = true;
       try {
         const resp = await fetch('/api/v1/auth/login', { 
           method: 'POST', 
@@ -469,9 +493,10 @@ function shadowApp() {
         });
         const data = await resp.json();
         if (!resp.ok) { 
-          this.error = data.message || 'Access denied / 认证失败'; 
+          this.error = 'Login incorrect'; 
           this.loginForm.password = '';
-          this.focusLoginInput();
+          this.loginStep = 'username';
+          this.focusLoginInput(true);
           return; 
         }
         this.authenticated = true;
@@ -481,7 +506,11 @@ function shadowApp() {
         await this.refreshConnections();
         this.connectSocket().catch(() => {});
       } catch (err) {
-        this.error = err.message || 'Network communication error';
+        this.error = 'Login error: network communication failure';
+        this.loginStep = 'username';
+        this.focusLoginInput(true);
+      } finally {
+        this.authSubmitting = false;
       }
     },
 
@@ -2198,7 +2227,7 @@ function shadowApp() {
           activeBtn.classList.remove('touch-active');
           if (!isDragging) {
             const action = activeBtn.getAttribute('data-action');
-            const payload = activeBtn.getAttribute('data-payload') || '';
+            const payload = this.mobileKeyPayload(activeBtn);
             if (action) {
               this.handleMobileBarButton(action, payload, e);
             }
@@ -2224,11 +2253,40 @@ function shadowApp() {
       });
     },
 
+    hapticFeedback() {
+      if (navigator.vibrate) {
+        try { navigator.vibrate(10); } catch (_) {}
+      }
+    },
+
+    mobileKeyPayload(btn) {
+      if (!btn) return '';
+      const key = btn.getAttribute('data-key');
+      if (key) {
+        const keyMap = {
+          escape: '\x1b',
+          tab: '\t',
+          interrupt: '\x03',
+          eof: '\x04',
+          up: '\x1b[A',
+          down: '\x1b[B',
+          right: '\x1b[C',
+          left: '\x1b[D',
+          home: '\x1b[H',
+          end: '\x1b[F',
+          pageup: '\x1b[5~',
+          pagedown: '\x1b[6~'
+        };
+        if (keyMap[key]) return keyMap[key];
+      }
+      return btn.getAttribute('data-payload') || '';
+    },
+
     handleMobileBarClick(e) {
       const btn = e.target.closest('button');
       if (!btn) return;
       const action = btn.getAttribute('data-action');
-      const payload = btn.getAttribute('data-payload') || '';
+      const payload = this.mobileKeyPayload(btn);
       if (action) {
         this.handleMobileBarButton(action, payload, e);
       }
@@ -2251,23 +2309,22 @@ function shadowApp() {
       }
       this._lastMobileBtnTime = now;
 
-      // Haptic feedback if supported (iOS WebKit / Android)
-      if (navigator.vibrate) {
-        try { navigator.vibrate(10); } catch (_) {}
-      }
-
+      this.hapticFeedback();
       this.terminalMobileButton(action, payload);
     },
 
     toggleMobileKeyboard() {
       if (!this.activeSessionId) return;
+      this.hapticFeedback();
       const id = this.activeSessionId;
       const helperTextarea = document.querySelector(`#terminal-${id} .xterm-helper-textarea`);
       if (this.isKeyboardOpen) {
+        this.isKeyboardOpen = false;
         if (helperTextarea) {
           helperTextarea.blur();
         }
       } else {
+        this.isKeyboardOpen = true;
         this.refocusTerminal(true);
       }
     },
@@ -2313,7 +2370,7 @@ function shadowApp() {
 
     async sendQuick(command) {
       if (!this.activeSessionId) return;
-      const noReturn = ['\x03', '\x04', '\x1b', '\x09', '\x1b[A', '\x1b[B', '\x1b[C', '\x1b[D'];
+      const noReturn = ['\x03', '\x04', '\x1b', '\x09', '\t', '\x1b[A', '\x1b[B', '\x1b[C', '\x1b[D', '\x1b[H', '\x1b[F', '\x1b[5~', '\x1b[6~'];
       if (noReturn.includes(command)) {
         await this.sendSocket({ type: 'ssh:input', sessionId: this.activeSessionId, payload: { data: command } });
       } else if (command === 'clear' || command === 'exit') {

@@ -2,10 +2,13 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="SlateSSH">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="SlateSSH · 随身 SSH 终端与远程文件工作台">
   <meta name="theme-color" content="#090a0f">
   <title>SlateSSH // Terminal Console</title>
   <link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml">
@@ -15,14 +18,34 @@
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" sizes="180x180">
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260910_mob_v1">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260910_pwa_v4">
 </head>
 <body class="term-body">
-  <div id="app" x-data="shadowApp()" x-init="init()" :class="theme === 'dark' ? 'app theme-dark' : 'app theme-dark'">
+  <div id="app" x-data="shadowApp()" class="app theme-dark" :class="{ 'keyboard-open': isKeyboardOpen }" x-cloak>
     
+    <header class="app-chrome" x-show="authenticated">
+      <a class="app-brand" href="/" @click.prevent="authenticated && sessions.length ? openMobilePanel('hosts') : null" aria-label="SlateSSH 主机目录"><span class="brand-glyph" aria-hidden="true">&gt;_</span> SlateSSH<span class="chrome-path" x-text="authenticated ? '~/workspace' : '~/login'"></span></a>
+      <div class="chrome-actions">
+        <span class="network-state" :class="isOnline ? '' : 'offline'" role="status"><span class="status-dot"></span><span x-text="isOnline ? 'ONLINE' : 'OFFLINE'"></span></span>
+        <button class="term-btn-mini" x-show="!isStandalone" @click="installApp()" aria-label="安装 SlateSSH 应用">[ 安装 ]</button>
+        <button class="term-btn-mini" x-show="isMobile && sessions.length" @click="openMobilePanel('hosts')" :aria-expanded="showMobileMenu" aria-label="打开主机目录">[ Hosts ]</button>
+      </div>
+    </header>
+    <div class="app-notice" x-show="!isOnline" role="status">[OFFLINE] 网络已离线。应用界面仍可打开，连接服务器需要恢复网络。</div>
+    <div class="app-notice update-notice" x-show="updateAvailable" role="status">
+      <span x-text="sessions.length ? '新版本已就绪，关闭所有会话后可更新。' : '新版本已就绪。'"></span>
+      <button class="term-btn-mini" @click="applyAppUpdate()" :disabled="sessions.length > 0">[ 更新 ]</button>
+    </div>
+    <div class="modal-backdrop" x-show="showInstallHelp" @click.self="showInstallHelp = false" x-effect="syncDialog($el, showInstallHelp)" role="dialog" aria-modal="true" aria-label="安装 SlateSSH">
+      <section class="install-card">
+        <div class="modal-head"><span class="modal-title">=== [ INSTALL SLATESSH PWA ] ===</span><button class="term-btn-mini" @click="showInstallHelp = false">[ Close X ]</button></div>
+        <div class="install-content"><p>Safari: 点击分享按钮 -&gt;「添加到主屏幕」-&gt; 开启独立应用窗口体验。</p><p x-show="!secureContext" class="term-msg info">[NOTE] 请使用 HTTPS 地址以启用离线加载与应用更新。</p></div>
+      </section>
+    </div>
+
     <!-- Booting screen (only when not authenticated) -->
     <template x-if="booting && !authenticated && !needsSetup">
-      <div class="auth-page term-page">
+      <div class="auth-page term-page term-tty-screen">
         <div class="term-boot-line">
           <span class="term-prompt">system:</span> Initializing SlateSSH secure terminal gateway...<span class="term-cursor">_</span>
         </div>
@@ -43,15 +66,15 @@
         <form @submit.prevent="setup()" class="term-auth-form">
           <div class="term-prompt-row">
             <span class="term-prompt">create admin username:</span>
-            <input x-model="setupForm.username" autocomplete="username" class="term-input" placeholder="admin" autofocus required>
+            <input x-model="setupForm.username" autocomplete="username" class="term-input" placeholder="admin" aria-label="管理员用户名" autocapitalize="none" autocorrect="off" required>
           </div>
           <div class="term-prompt-row">
             <span class="term-prompt">enter new password:</span>
-            <input x-model="setupForm.password" type="password" autocomplete="new-password" class="term-input" placeholder="••••••••" required>
+            <input x-model="setupForm.password" type="password" autocomplete="new-password" aria-label="管理员密码" class="term-input" placeholder="••••••••" required>
           </div>
           <div class="term-prompt-row">
             <span class="term-prompt">confirm password:</span>
-            <input x-model="setupForm.confirmPassword" type="password" autocomplete="new-password" class="term-input" placeholder="••••••••" required>
+            <input x-model="setupForm.confirmPassword" type="password" autocomplete="new-password" aria-label="管理员密码" class="term-input" placeholder="••••••••" required>
           </div>
           <p class="term-msg error" x-show="error" x-text="error"></p>
           <div class="term-form-actions">
@@ -61,86 +84,102 @@
       </div>
     </template>
 
-    <!-- Linux SSH login screen -->
+    <!-- Pure Linux native console login screen (TTY1) -->
     <template x-if="!booting && !needsSetup && !authenticated">
-      <div class="auth-page term-page" x-init="focusLoginInput()" @click="focusLoginInput()">
-        <pre class="term-ascii-banner">
-  ____  _       _       ____ ____  _   _ 
- / ___|| | __ _| |_ ___/ ___/ ___|| | | |
- \___ \| |/ _` | __/ _ \___ \___ \| |_| |
-  ___) | | (_| | ||  __/___) |__) |  _  |
- |____/|_|\__,_|\__\___|____/____/|_| |_|
-</pre>
-        <div class="term-motd">
-          SlateSSH Terminal Gateway (SSH/SFTP/RDP v1.0.0)<br>
-          Type username and password to establish authorized session.
-        </div>
-
-        <form @submit.prevent="loginStep === 'username' ? submitUsername() : login()" class="term-auth-form">
-          
-          <!-- Step 1: Username prompt -->
-          <div class="term-prompt-row term-cli-row" @click="document.getElementById('term-login-username')?.focus()">
-            <span class="term-prompt">login as:</span>
-            <template x-if="loginStep === 'username'">
-              <div class="term-cli-input-wrap">
-                <input id="term-login-username" x-model="loginForm.username" autocomplete="username" class="term-cli-input" :style="'width:' + ((loginForm.username || '').length) + 'ch;'" autofocus required @keydown.enter.prevent="submitUsername()">
-                <span class="term-cursor">_</span>
-              </div>
-            </template>
-            <template x-if="loginStep === 'password'">
-              <span class="term-static-val" @click="backToUsername()" title="Click to change username" x-text="loginForm.username"></span>
-            </template>
+      <main class="auth-page term-page term-tty-screen" @click="focusLoginInput(true)">
+        <section class="auth-console term-tty-console" aria-labelledby="login-title">
+          <div class="term-tty-banner">
+            <div>SlateSSH Linux 6.8.0-slatessh (tty1)</div>
+            <div class="term-tty-motd">Type authorized credentials to establish session.</div>
           </div>
 
-          <!-- Step 2: Password prompt (Linux SSH hidden style) -->
-          <template x-if="loginStep === 'password'">
-            <div class="term-prompt-row term-cli-row" @click="document.getElementById('term-login-password')?.focus()">
-              <span class="term-prompt" x-text="(loginForm.username || 'user') + '@slatessh\'s password:'"></span>
-              <div class="term-cli-input-wrap">
-                <input id="term-login-password" x-model="loginForm.password" type="password" autocomplete="current-password" class="term-cli-input term-stealth-input" :style="'width:' + ((loginForm.password || '').length) + 'ch;'" autofocus required @keydown.backspace="if(!loginForm.password) backToUsername()">
-                <span class="term-cursor">_</span>
+          <div class="term-tty-error" x-show="error" x-text="error" role="alert"></div>
+
+          <form @submit.prevent="loginStep === 'username' ? handleUsernameSubmit() : login()" class="term-tty-form" autocomplete="off">
+            <!-- Step 1: Username prompt -->
+            <div class="term-tty-line">
+              <label for="term-login-username" class="term-tty-prompt">slatessh login:</label>
+              <template x-if="loginStep === 'username'">
+                <div class="term-tty-input-row">
+                  <input
+                    id="term-login-username"
+                    name="username"
+                    x-model="loginForm.username"
+                    type="text"
+                    autocomplete="off"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    enterkeyhint="next"
+                    class="term-tty-input"
+                    autofocus
+                    required
+                  >
+                  <span class="term-cursor" aria-hidden="true">_</span>
+                </div>
+              </template>
+              <template x-if="loginStep === 'password'">
+                <span class="term-tty-val" x-text="loginForm.username" @click.stop="resetLoginStep()" title="Click to change username"></span>
+              </template>
+            </div>
+
+            <!-- Step 2: Password prompt -->
+            <div class="term-tty-line" x-show="loginStep === 'password'">
+              <label for="term-login-password" class="term-tty-prompt">Password:</label>
+              <div class="term-tty-input-row">
+                <input
+                  id="term-login-password"
+                  name="password"
+                  x-model="loginForm.password"
+                  type="password"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  autocorrect="off"
+                  spellcheck="false"
+                  enterkeyhint="go"
+                  class="term-tty-input"
+                  @keydown.backspace="if (!loginForm.password) resetLoginStep()"
+                  @keydown.escape.prevent="resetLoginStep()"
+                >
+                <span class="term-cursor" aria-hidden="true">_</span>
               </div>
             </div>
-          </template>
 
-          <div class="term-options-row">
-            <label class="term-check-row">
-              <input type="checkbox" x-model="loginForm.rememberMe">
-              <span>[x] Remember session</span>
-            </label>
+            <button type="submit" class="term-hidden-submit" tabindex="-1" aria-hidden="true"></button>
+          </form>
+
+          <!-- Subtle mobile helper buttons -->
+          <div class="term-tty-sub-hint" x-show="isMobile">
+            <button type="button" class="term-btn-mini" x-show="loginStep === 'username'" @click.stop="handleUsernameSubmit()">[ Next ↵ ]</button>
+            <button type="button" class="term-btn-mini primary" x-show="loginStep === 'password'" :disabled="authSubmitting" @click.stop="login()">
+              <span x-text="authSubmitting ? '[ Authenticating... ]' : '[ Login ↵ ]'"></span>
+            </button>
+            <button type="button" class="term-btn-mini" x-show="loginStep === 'password'" @click.stop="resetLoginStep()">[ Back ]</button>
           </div>
 
-          <p class="term-msg error" x-show="error" x-text="error"></p>
-
-          <div class="term-form-actions">
-            <template x-if="loginStep === 'username'">
-              <button class="term-btn primary" type="submit">[ Next &gt; ]</button>
-            </template>
-            <template x-if="loginStep === 'password'">
-              <div class="term-action-group">
-                <button class="term-btn primary" type="submit">[ Authenticate ]</button>
-                <button class="term-btn" type="button" @click="backToUsername()">[ Change User ]</button>
-              </div>
-            </template>
-          </div>
-        </form>
-      </div>
+        </section>
+      </main>
     </template>
 
     <!-- Main Workspace Area -->
     <template x-if="authenticated">
       <div class="workspace-root">
 
-        <!-- INITIAL STATE: Borderless Seamless Host Launcher when no active session -->
+        <!-- INITIAL STATE: Minimal Linux Host Launcher when no active session -->
         <template x-if="!sessions.length">
           <div class="centered-launcher-wrap">
             <div class="launcher-term-container">
+              <div class="launcher-cli-header">
+                <span class="term-prompt">user@slatessh:~$</span>
+                <span class="cli-cmd">hosts --list</span>
+                <span class="cli-meta" x-text="'[' + filteredConnections.length + '/' + connections.length + ' saved]'"></span>
+              </div>
               
               <!-- Clean minimal CLI search & action bar -->
               <div class="launcher-cli-bar">
                 <div class="launcher-search-box">
-                  <span class="term-prompt">host&gt;</span>
-                  <input x-model="connectionQuery" type="search" placeholder="search host or ip..." class="term-cli-search" autocomplete="off">
+                  <span class="term-prompt">filter&gt;</span>
+                  <input x-model="connectionQuery" type="search" aria-label="搜索主机或 IP" placeholder="search host or ip..." class="term-cli-search" autocomplete="off">
                   <button x-show="connectionQuery" @click="connectionQuery = ''" class="term-btn-mini">[x]</button>
                 </div>
                 <div class="launcher-actions-top">
@@ -197,10 +236,11 @@
         <template x-if="sessions.length > 0">
           <div class="main-grid" :class="{ 'sidebar-hidden': !showSidebar, 'utilities-hidden': !(showSftpWidget || showStatusWidget) }">
             
+            <button class="drawer-scrim" x-show="isMobile && showMobileMenu" @click="showMobileMenu = false" aria-label="关闭主机目录"></button>
             <!-- LEFT PANEL: Host Directory -->
             <aside class="connection-panel" x-show="isMobile ? showMobileMenu : showSidebar" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
               <div class="panel-section-title">
-                <span>// HOST DIRECTORY</span>
+                <span>// HOST DIRECTORY</span><button x-show="isMobile" class="term-btn-mini" @click="showMobileMenu = false" aria-label="关闭主机目录">[ × ]</button>
                 <button class="term-btn" @click="newConnection('SSH', 'sidebar')" title="Add connection">[+ New]</button>
               </div>
 
@@ -230,7 +270,7 @@
               <!-- Sidebar bottom collapse and manager controls -->
               <div class="connection-panel-bottom">
                 <button class="term-btn" @click="showConnectionManager = true">[ Manager ]</button>
-                <button class="term-btn" @click="toggleSidebarPanel()">[ &lt;&lt; Collapse ]</button>
+                <button class="term-btn" @click="isMobile ? showMobileMenu = false : toggleSidebarPanel()"><span x-text="isMobile ? '[ 关闭 ]' : '[ &lt;&lt; Collapse ]'"></span></button>
               </div>
             </aside>
 
@@ -248,19 +288,17 @@
                       <span class="tab-badge" x-text="'#' + (idx + 1)"></span>
                       <span class="tab-type" x-text="'[' + (tab.connecting ? currentSpinner : (tab.type || 'SSH')) + ']'"></span>
                       <span class="tab-name" x-text="tab.name"></span>
-                      <span class="tab-close" @click.stop="closeTab(tab.id)">[x]</span>
                     </button>
+                    <button class="tab-close" @click="closeTab(tab.id)" :aria-label="'关闭会话 ' + tab.name">×</button>
                   </div>
                 </template>
                 <button class="tab-new" @click="showConnectionManager = true" title="New Session">[ + ]</button>
                 <div style="flex:1"></div>
-                <button x-show="isMobile" @click="showMobileSftp = true; rightTab = 'files'" class="term-btn-mini primary" title="Remote Files">[ Files ]</button>
-                <button x-show="isMobile" @click="showMobileStatus = true; rightTab = 'status'" class="term-btn-mini" title="System Telemetry">[ Stats ]</button>
                 <button x-show="!isMobile && !(showSftpWidget || showStatusWidget)" @click="toggleUtilityPanel()" class="term-btn-mini" title="Show Side Panel">[ Files &gt;&gt; ]</button>
               </div>
 
               <!-- Terminal Command Bar -->
-              <div class="terminal-commandbar" x-show="activeSessionId && (!isMobile || !isKeyboardOpen)">
+              <div class="terminal-commandbar" x-show="activeSessionId && !isMobile">
                 <button class="term-btn" @click="openTerminalCopyViewer()">[ Copy ]</button>
                 <button class="term-btn" @click="openTerminalPasteBox()">[ Paste ]</button>
                 <button class="term-btn" @click="clearActiveTerminal()">[ Clear ]</button>
@@ -273,6 +311,8 @@
                 <button @click="toggleFullscreen()" class="term-btn" x-text="isFullscreen ? '[ Window ]' : '[ Fullscreen ]'"></button>
               </div>
 
+              <div class="session-notice" x-show="sessions.some(tab => tab.id === activeSessionId && tab.type !== 'RDP' && !tab.connected && !tab.connecting && !tab.error)" role="status"><span>[!] 会话已断开</span><button class="term-btn-mini" @click="reconnectActiveSession()" :disabled="!isOnline">[ 重新连接 ]</button></div>
+
               <!-- Terminal viewport stage -->
               <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
                 <!-- Floating Exit Fullscreen Button -->
@@ -281,7 +321,7 @@
                 </button>
                 
                 <!-- Terminal Output Buffer Fullscreen Copy View -->
-                <div x-show="terminalCopyViewer.visible" class="terminal-copy-viewer" @click.stop>
+                <div x-show="terminalCopyViewer.visible" x-effect="syncDialog($el, terminalCopyViewer.visible)" role="dialog" aria-modal="true" aria-label="复制终端输出" class="terminal-copy-viewer" @click.stop>
                   <div class="terminal-copy-head">
                     <span class="copy-head-title">=== [ TERMINAL TEXT BUFFER ] ===</span>
                     <div class="copy-head-actions">
@@ -290,12 +330,12 @@
                       <button class="term-btn-mini" @click="closeTerminalCopyViewer()">[ Close X ]</button>
                     </div>
                   </div>
-                  <textarea readonly x-model="terminalCopyViewer.text" spellcheck="false" class="term-copy-textarea"></textarea>
+                  <textarea aria-label="终端输出" readonly x-model="terminalCopyViewer.text" spellcheck="false" class="term-copy-textarea"></textarea>
                 </div>
 
-                <div x-show="terminalPasteBox.visible" class="terminal-paste-popover" @click.stop>
+                <div x-show="terminalPasteBox.visible" x-effect="syncDialog($el, terminalPasteBox.visible)" role="dialog" aria-modal="true" aria-label="粘贴命令" class="terminal-paste-popover" @click.stop>
                   <div class="terminal-paste-head">=== PASTE TEXT TO PTY ===</div>
-                  <textarea x-model="terminalPasteBox.text" placeholder="Type or paste commands here..." class="term-textarea" @keydown.ctrl.enter.prevent="sendTerminalPasteText()" @keydown.meta.enter.prevent="sendTerminalPasteText()"></textarea>
+                  <textarea aria-label="待粘贴的命令" autocapitalize="none" autocorrect="off" spellcheck="false" x-model="terminalPasteBox.text" placeholder="Type or paste commands here..." class="term-textarea" @keydown.ctrl.enter.prevent="sendTerminalPasteText()" @keydown.meta.enter.prevent="sendTerminalPasteText()"></textarea>
                   <div class="terminal-paste-actions">
                     <button class="term-btn" @click="closeTerminalPasteBox()">[ Cancel ]</button>
                     <button class="term-btn primary" @click="sendTerminalPasteText()">[ Send to PTY ]</button>
@@ -305,64 +345,52 @@
                 <template x-for="tab in sessions" :key="tab.id + '-terminal'">
                   <div x-show="activeSessionId === tab.id" class="terminal-wrap">
                     
-                    <!-- Terminal Connecting Live Linux Progress Animation -->
+                    <!-- Terminal Connecting Stream: Pure Linux SSH output -->
                     <template x-if="tab.connecting || tab.error">
                       <div class="terminal-connecting-screen">
-                        <div class="conn-term-card">
-                          
-                          <div class="conn-header">
-                            <span class="term-prompt">ssh:</span> Connecting to <strong x-text="(tab.username || 'root') + '@' + (tab.host || 'host') + ':' + (tab.port || 22)"></strong>
+                        <div class="conn-term-stream">
+                          <div class="conn-line dim">OpenSSH_9.6p1, OpenSSL 3.0.13</div>
+                          <div class="conn-line">
+                            <span class="term-prompt">debug1:</span> Connecting to <strong x-text="(tab.username || 'root') + '@' + (tab.host || 'host') + ':' + (tab.port || 22)"></strong> [<span x-text="tab.host || 'host'"></span>]...
                           </div>
 
                           <template x-if="tab.connecting">
-                            <div class="conn-body">
-                              <div class="conn-progress-bar">
+                            <div class="conn-stream-body">
+                              <div class="conn-line" x-show="getConnectingStep(tab) >= 1">
+                                <span class="term-prompt">debug1:</span> TCP connection established to <span x-text="(tab.host || '') + ':' + (tab.port || 22)"></span>
+                              </div>
+                              <div class="conn-line" x-show="getConnectingStep(tab) >= 2">
+                                <span class="term-prompt">debug1:</span> SSH-2.0 handshake & cipher suite agreement.
+                              </div>
+                              <div class="conn-line" x-show="getConnectingStep(tab) >= 3">
+                                <span class="term-prompt">debug1:</span> User authentication & remote PTY allocation.
+                              </div>
+                              <div class="conn-line active-line">
                                 <span class="conn-spinner-glyph" x-text="currentSpinner"></span>
                                 <span class="conn-progress-label" x-text="getConnectingStatusText(tab)"></span>
                                 <span class="conn-timer-badge" x-text="'[' + getConnectingElapsed(tab) + ']'"></span>
                               </div>
-
-                              <div class="conn-timeline">
-                                <div class="conn-step done">
-                                  <span class="step-icon">[✓]</span>
-                                  <span class="step-text">Parsed target host profile (<span x-text="tab.name"></span>)</span>
-                                </div>
-                                <div class="conn-step" :class="getConnectingStep(tab) >= 1 ? 'done' : 'active'">
-                                  <span class="step-icon" x-text="getConnectingStep(tab) >= 1 ? '[✓]' : '[' + currentSpinner + ']'"></span>
-                                  <span class="step-text">TCP connection established to <span x-text="(tab.host || '') + ':' + (tab.port || 22)"></span></span>
-                                </div>
-                                <div class="conn-step" :class="getConnectingStep(tab) >= 2 ? 'done' : (getConnectingStep(tab) === 1 ? 'active' : 'pending')">
-                                  <span class="step-icon" x-text="getConnectingStep(tab) >= 2 ? '[✓]' : (getConnectingStep(tab) === 1 ? '[' + currentSpinner + ']' : '[ ]')"></span>
-                                  <span class="step-text">SSH-2.0 handshake & cipher suite agreement</span>
-                                </div>
-                                <div class="conn-step" :class="getConnectingStep(tab) >= 3 ? 'done' : (getConnectingStep(tab) === 2 ? 'active' : 'pending')">
-                                  <span class="step-icon" x-text="getConnectingStep(tab) >= 3 ? '[✓]' : (getConnectingStep(tab) === 2 ? '[' + currentSpinner + ']' : '[ ]')"></span>
-                                  <span class="step-text">User authentication & remote PTY allocation</span>
-                                </div>
-                              </div>
-
-                              <div class="conn-footer">
-                                <button class="term-btn" @click="closeTab(tab.id)">[ Cancel Connection ]</button>
+                              <div class="conn-actions-line">
+                                <button class="term-btn-mini" @click="closeTab(tab.id)">[ Cancel Connection ]</button>
                               </div>
                             </div>
                           </template>
 
                           <template x-if="tab.error">
-                            <div class="conn-error-body">
-                              <div class="conn-error-banner">
-                                <span class="term-prompt error">[ERROR]:</span>
+                            <div class="conn-stream-error">
+                              <div class="conn-line error-line">
+                                <span class="term-prompt error">ssh: connect to host <span x-text="tab.host || 'host'"></span>:</span>
                                 <span class="error-msg-text" x-text="tab.error"></span>
                               </div>
-                              <div class="conn-error-hints">
-                                Remote host did not respond or authentication rejected. Please check network, port and credentials.
+                              <div class="conn-line dim">
+                                Connection rejected or remote host unreachable. Check network, port and credentials.
                               </div>
-                              <div class="conn-footer">
+                              <div class="conn-actions-line">
                                 <button class="term-btn primary" @click="retryConnection(tab)">[ Retry Connection ]</button>
                                 <button class="term-btn" @click="closeTab(tab.id)">[ Close Tab ]</button>
                               </div>
                             </div>
                           </template>
-
                         </div>
                       </div>
                     </template>
@@ -381,24 +409,27 @@
                 </template>
               </div>
 
-              <!-- Mobile command helper bar -->
-              <div class="terminal-mobile-bar" x-show="isMobile && activeSessionId" x-init="setupMobileBar($el)" @click="handleMobileBarClick($event)">
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b" title="Escape">ESC</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x09" title="Tab">TAB</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="ctrl" :class="ctrlKeyActive ? 'active' : ''" title="Ctrl modifier">CTRL</button>
-                <button type="button" tabindex="-1" class="mob-btn danger" data-action="quick" data-payload="\x03" title="Interrupt (Ctrl+C)">^C</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b[A" title="Up Arrow">↑</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b[B" title="Down Arrow">↓</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b[D" title="Left Arrow">←</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="\x1b[C" title="Right Arrow">→</button>
-                <button type="button" tabindex="-1" class="mob-btn primary" data-action="paste" title="Paste Clipboard">PASTE</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="/" title="Slash">/</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="~" title="Tilde">~</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="-" title="Hyphen">-</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="quick" data-payload="|" title="Pipe">|</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="copy" title="Copy Buffer">COPY</button>
-                <button type="button" tabindex="-1" class="mob-btn" data-action="files" title="Remote Files">FILES</button>
-                <button type="button" tabindex="-1" class="mob-btn kb-toggle" data-action="keyboard" x-text="isKeyboardOpen ? '⌨ HIDE' : '⌨ SHOW'" title="Toggle Virtual Keyboard">⌨</button>
+              <!-- Pinned controls sit outside the horizontal key scroller. -->
+              <div class="terminal-mobile-dock" x-show="isMobile && activeSessionId">
+                <button type="button" class="dock-tool-button" @click="openMobilePanel('tools')" aria-label="打开终端工具" :aria-expanded="showMobileTools">···</button>
+                <div class="terminal-mobile-bar" x-show="activeSessionType() !== 'RDP'" x-init="setupMobileBar($el)" @click="handleMobileBarClick($event)" role="toolbar" aria-label="终端快捷键">
+                  <button type="button" class="mob-btn" data-action="quick" data-key="escape" title="Escape">ESC</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-key="tab" title="Tab 补全">TAB</button>
+                  <button type="button" class="mob-btn" data-action="ctrl" :class="ctrlKeyActive ? 'active' : ''" :aria-pressed="ctrlKeyActive" title="Ctrl 组合键">CTRL</button>
+                  <button type="button" class="mob-btn danger" data-action="quick" data-key="interrupt" title="中断 Ctrl+C">^C</button>
+                  <button type="button" class="mob-btn primary" data-action="paste" title="粘贴剪贴板">PASTE</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-key="up" aria-label="方向键 上">↑</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-key="down" aria-label="方向键 下">↓</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-key="left" aria-label="方向键 左">←</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-key="right" aria-label="方向键 右">→</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-key="home" title="行首">HOME</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-key="end" title="行尾">END</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-payload="/">/</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-payload="~">~</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-payload="-">-</button>
+                  <button type="button" class="mob-btn" data-action="quick" data-payload="|">|</button>
+                </div>
+                <button type="button" class="dock-keyboard-button" x-show="activeSessionType() !== 'RDP'" @click="toggleMobileKeyboard()" :aria-label="isKeyboardOpen ? '收起软键盘' : '打开软键盘'" :aria-pressed="isKeyboardOpen"><svg aria-hidden="true" viewBox="0 0 24 20" width="24" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="22" height="15" rx="2"/><path d="M4 6h2m2 0h2m2 0h2m2 0h2m2 0h1M4 10h2m2 0h2m2 0h2m2 0h2m2 0h1M7 14h10"/></svg><span x-text="isKeyboardOpen ? '收起' : '键盘'"></span></button>
               </div>
             </section>
             <!-- RIGHT PANEL: SFTP & Server Status -->
@@ -486,8 +517,23 @@
           </div>
         </template>
 
+        <div class="modal-backdrop mobile-modal-backdrop" x-show="showMobileTools" @click.self="showMobileTools = false" x-effect="syncDialog($el, showMobileTools)" role="dialog" aria-modal="true" aria-label="终端工具">
+          <section class="mobile-term-modal tools-sheet">
+            <div class="modal-head"><span class="modal-title">=== [ TOOLS ] ===</span><button class="term-btn-mini" @click="showMobileTools = false">[ Close X ]</button></div>
+            <div class="tool-grid">
+              <button class="term-btn" @click="openMobilePanel('hosts')">[ 主机目录 ]</button>
+              <button class="term-btn" @click="showMobileTools = false; toggleFullscreen()" x-text="isFullscreen ? '[ 退出全屏 ]' : '[ 全屏终端 ]'"></button>
+              <button class="term-btn" x-show="activeSessionType() !== 'RDP'" @click="showMobileTools = false; openTerminalCopyViewer()">[ 复制输出 ]</button>
+              <button class="term-btn" x-show="activeSessionType() !== 'RDP'" @click="showMobileTools = false; openTerminalPasteBox()">[ 粘贴命令 ]</button>
+              <button class="term-btn" x-show="activeSessionType() !== 'RDP'" @click="openMobilePanel('files')">[ 远程文件 ]</button>
+              <button class="term-btn" x-show="activeSessionType() !== 'RDP'" @click="openMobilePanel('status')">[ 系统状态 ]</button>
+            </div>
+            <p class="tools-hint">// 快捷栏可左右横滑 · 支持 CTRL 组合键与剪贴板一键粘贴</p>
+          </section>
+        </div>
+
         <!-- Mobile SFTP Modal Dialog -->
-        <div x-show="showMobileSftp" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileSftp = false">
+        <div x-show="showMobileSftp" x-effect="syncDialog($el, showMobileSftp)" role="dialog" aria-modal="true" aria-label="远程文件" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileSftp = false">
           <div class="mobile-term-modal">
             <div class="modal-head">
               <span class="modal-title">=== [ REMOTE SFTP FILES ] ===</span>
@@ -517,11 +563,12 @@
                   <div class="empty-term">-- Connect SSH session to view files --</div>
                 </template>
                 <template x-for="entry in files" :key="entry.filename">
-                  <div class="file-item" @contextmenu="showContextMenu($event, entry)" :title="entry.filename + (entry.isDir ? '/' : '')">
+                  <div class="file-item mobile-file-row" @contextmenu="showContextMenu($event, entry)" :title="entry.filename + (entry.isDir ? '/' : '')">
                     <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : (readFile(entry.filename), showMobileSftp = false)">
                       <span :class="getFileIconClass(entry)" x-text="getFileIcon(entry)"></span>
                       <span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span>
                     </button>
+                    <button class="term-btn-mini" @click.stop="showContextMenu($event, entry)" :aria-label="'文件操作 ' + entry.filename">···</button>
                   </div>
                 </template>
               </div>
@@ -530,7 +577,7 @@
         </div>
 
         <!-- Mobile System Stats Modal Dialog -->
-        <div x-show="showMobileStatus" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileStatus = false">
+        <div x-show="showMobileStatus" x-effect="syncDialog($el, showMobileStatus)" role="dialog" aria-modal="true" aria-label="系统状态" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileStatus = false">
           <div class="mobile-term-modal">
             <div class="modal-head">
               <span class="modal-title">=== [ SYSTEM TELEMETRY ] ===</span>
@@ -571,7 +618,7 @@
         </div>
 
         <!-- Connection Manager Modal -->
-        <div x-show="showConnectionManager" class="modal-backdrop" @click.self="closeConnectionManager()">
+        <div x-show="showConnectionManager" x-effect="syncDialog($el, showConnectionManager)" role="dialog" aria-modal="true" aria-label="主机管理" class="modal-backdrop" @click.self="closeConnectionManager()">
           <section class="connection-modal">
             <div class="modal-head">
               <span class="modal-title" x-text="showConnectionForm ? (connectionForm.id ? '=== [ EDIT CONNECTION ] ===' : '=== [ NEW CONNECTION ] ===') : '=== [ CONNECTION DIRECTORY ] ==='"></span>
@@ -617,30 +664,30 @@
               <form x-show="showConnectionForm" @submit.prevent="saveConnection()" class="connection-form">
                 <div class="form-row-inline">
                   <span class="form-key">Name:</span>
-                  <input x-model="connectionForm.name" autocomplete="off" placeholder="Production Server" class="term-input" required>
+                  <input aria-label="Name" x-model="connectionForm.name" autocomplete="off" placeholder="Production Server" class="term-input" required>
                 </div>
                 <div class="form-row-inline">
                   <span class="form-key">Protocol:</span>
-                  <select x-model="connectionForm.type" @change="normalizeConnectionForm()" class="term-select">
+                  <select aria-label="Protocol" x-model="connectionForm.type" @change="normalizeConnectionForm()" class="term-select">
                     <option value="SSH">SSH Terminal</option>
                     <option value="RDP">RDP Remote Desktop</option>
                   </select>
                 </div>
                 <div class="form-row-inline">
                   <span class="form-key">Host:</span>
-                  <input x-model="connectionForm.host" autocomplete="url" placeholder="192.168.1.100" class="term-input" required>
+                  <input aria-label="Host" x-model="connectionForm.host" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="192.168.1.100" class="term-input" required>
                 </div>
                 <div class="form-row-inline">
                   <span class="form-key">Port:</span>
-                  <input x-model.number="connectionForm.port" type="number" autocomplete="off" placeholder="22" class="term-input" required>
+                  <input aria-label="Port" x-model.number="connectionForm.port" type="number" inputmode="numeric" min="1" max="65535" autocomplete="off" placeholder="22" class="term-input" required>
                 </div>
                 <div class="form-row-inline">
                   <span class="form-key">Username:</span>
-                  <input x-model="connectionForm.username" autocomplete="username" placeholder="root" class="term-input" required>
+                  <input aria-label="Username" x-model="connectionForm.username" autocomplete="username" placeholder="root" class="term-input" required>
                 </div>
                 <div class="form-row-inline" x-show="connectionForm.type !== 'RDP'">
                   <span class="form-key">Auth Method:</span>
-                  <select x-model="connectionForm.auth_method" class="term-select">
+                  <select aria-label="Auth Method" x-model="connectionForm.auth_method" class="term-select">
                     <option value="password">Password</option>
                     <option value="key">Private Key</option>
                   </select>
@@ -648,24 +695,24 @@
                 <template x-if="connectionForm.auth_method === 'password' || connectionForm.type === 'RDP'">
                   <div class="form-row-inline">
                     <span class="form-key">Password:</span>
-                    <input x-model="connectionForm.password" type="password" autocomplete="current-password" :placeholder="connectionForm.id ? '(leave blank to keep stored password)' : '••••••••'" class="term-input">
+                    <input aria-label="Password" x-model="connectionForm.password" type="password" autocomplete="current-password" :placeholder="connectionForm.id ? '(leave blank to keep stored password)' : '••••••••'" class="term-input">
                   </div>
                 </template>
                 <template x-if="connectionForm.auth_method === 'key' && connectionForm.type !== 'RDP'">
                   <div class="form-stack">
                     <div class="form-row-inline">
                       <span class="form-key">Private Key:</span>
-                      <textarea x-model="connectionForm.private_key" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..." class="term-textarea"></textarea>
+                      <textarea aria-label="Private Key" x-model="connectionForm.private_key" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..." class="term-textarea"></textarea>
                     </div>
                     <div class="form-row-inline">
                       <span class="form-key">Passphrase:</span>
-                      <input x-model="connectionForm.passphrase" type="password" autocomplete="current-password" placeholder="Passphrase (optional)" class="term-input">
+                      <input aria-label="Passphrase" x-model="connectionForm.passphrase" type="password" autocomplete="current-password" placeholder="Passphrase (optional)" class="term-input">
                     </div>
                   </div>
                 </template>
                 <div class="form-row-inline">
                   <span class="form-key">Notes:</span>
-                  <input x-model="connectionForm.notes" placeholder="Optional notes..." class="term-input">
+                  <input aria-label="Notes" x-model="connectionForm.notes" placeholder="Optional notes..." class="term-input">
                 </div>
                 <div class="form-actions">
                   <button class="term-btn primary" type="submit">[ Save Host ]</button>
@@ -678,7 +725,7 @@
         </div>
 
         <!-- Connection Test Result Modal -->
-        <div x-show="testResultModal.visible" class="modal-backdrop test-result-backdrop">
+        <div x-show="testResultModal.visible" x-effect="syncDialog($el, testResultModal.visible)" role="dialog" aria-modal="true" aria-label="连接测试" class="modal-backdrop test-result-backdrop">
           <div class="test-result-card">
             <div class="modal-head">
               <span class="modal-title" x-text="'=== [ ' + testResultModal.title + ' ] ==='"></span>
@@ -710,8 +757,8 @@
             </div>
             <template x-if="activeEditorTab">
               <div class="editor-body" x-show="!editorWindow.minimized">
-                <textarea class="editor-textarea" :class="monacoReady ? 'hidden-editor' : ''" x-model="activeEditorTab.content"></textarea>
-                <div id="monaco-editor-container" class="monaco-editor-container" :class="monacoReady ? '' : 'hidden-editor'" x-init="$nextTick(() => initMonacoEditor())" x-effect="updateMonacoEditor()"></div>
+                <textarea class="editor-textarea" aria-label="编辑文件内容" autocapitalize="none" autocorrect="off" spellcheck="false" :class="monacoReady && !isMobile ? 'hidden-editor' : ''" x-model="activeEditorTab.content"></textarea>
+                <div id="monaco-editor-container" class="monaco-editor-container" :class="monacoReady && !isMobile ? '' : 'hidden-editor'" x-init="$nextTick(() => initMonacoEditor())" x-effect="updateMonacoEditor()"></div>
               </div>
             </template>
             <template x-if="!editorWindow.minimized && !editorWindow.maximized">
@@ -754,7 +801,8 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/app.js?v=20260910_mob_v1"></script>
+  <script src="/assets/js/pwa.js?v=20260910_pwa_v4"></script>
+  <script src="/assets/js/app.js?v=20260910_pwa_v4"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>

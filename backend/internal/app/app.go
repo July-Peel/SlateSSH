@@ -136,8 +136,14 @@ func (a *App) routes() http.Handler {
 
 	frontendDir := filepath.Clean(a.cfg.FrontendDir)
 	if _, err := os.Stat(filepath.Join(frontendDir, "index.html")); err == nil {
+		router.Get("/sw.js", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache")
+			http.ServeFile(w, r, filepath.Join(frontendDir, "sw.js"))
+		})
 		router.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(filepath.Join(frontendDir, "assets")))))
 		router.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-cache")
 			http.ServeFile(w, r, filepath.Join(frontendDir, "index.html"))
 		})
 	}

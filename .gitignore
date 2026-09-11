@@ -11,3 +11,6 @@ build/
 data/
 .gocache/
 .gomodcache/
+node_modules/
+test-results/
+playwright-report/
