@@ -213,6 +213,9 @@ function shadowApp() {
           root.setProperty('--vv-top', `${offset}px`);
           const keyboardStateChanged = this.isKeyboardOpen !== keyboard;
           this.isKeyboardOpen = keyboard;
+          if (keyboard && typeof window.scrollTo === 'function' && window.scrollY > 0) {
+            window.scrollTo(0, 0);
+          }
           clearTimeout(this._resizeTimer);
           this._resizeTimer = setTimeout(() => {
             this.refreshActiveViewport();
@@ -309,6 +312,11 @@ function shadowApp() {
           term.scrollToBottom?.();
         } catch (_) {}
       }, 40);
+      setTimeout(() => {
+        try {
+          term.scrollToBottom?.();
+        } catch (_) {}
+      }, 120);
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.socket.send(JSON.stringify({ type: 'ssh:resize', sessionId: id, payload: { cols: term.cols, rows: term.rows } }));
       }
