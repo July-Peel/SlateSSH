@@ -1867,11 +1867,24 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   .centered-launcher-wrap {
     padding-bottom: calc(var(--dock-height) + 40px);
   }
+
+  /* Keep terminal canvas above fixed bottom dock on phone */
+  .terminal-stage {
+    padding-bottom: calc(42px + var(--dock-height) + var(--safe-bottom));
+    box-sizing: border-box;
+  }
 }
 
-/* When virtual keyboard opens on iOS */
+/* When virtual keyboard opens on iOS/mobile: hide dock nav, keep only ESC/TAB bar */
+#app.keyboard-open .m3-dock-nav {
+  display: none !important;
+}
 #app.keyboard-open .terminal-mobile-dock {
-  padding-bottom: 0px;
+  padding-bottom: 0px !important;
+}
+#app.keyboard-open .terminal-stage {
+  padding-bottom: 42px !important;
+  box-sizing: border-box;
 }
 
 /* ─── 14. MATERIAL 3 BOTTOM SHEET & MODAL SYSTEM ─── */
@@ -1977,7 +1990,14 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   align-items: center;
   justify-content: center;
   padding: 24px;
+  box-sizing: border-box;
+  transition: padding var(--m3-duration-short) var(--m3-motion-emphasized);
 }
+
+.editor-backdrop.has-maximized {
+  padding: 0 !important;
+}
+
 .editor-window {
   width: 90%;
   max-width: 1100px;
@@ -1990,6 +2010,21 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  box-sizing: border-box;
+  transition: width var(--m3-duration-short) var(--m3-motion-emphasized),
+              height var(--m3-duration-short) var(--m3-motion-emphasized),
+              max-width var(--m3-duration-short) var(--m3-motion-emphasized),
+              border-radius var(--m3-duration-short) var(--m3-motion-emphasized);
+}
+
+.editor-window.maximized {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .editor-head {
@@ -2136,19 +2171,32 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
 }
 
 /* ─── 17. CONTEXT MENUS & POPOVERS ─── */
+.context-menu-scrim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 199;
+  background: transparent;
+}
+
 .context-menu {
   position: fixed;
   background-color: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--m3-shape-lg);
-  box-shadow: var(--m3-elevation-3);
+  box-shadow: var(--m3-elevation-4);
   padding: 6px;
+  width: 175px;
   min-width: 160px;
+  max-width: calc(100vw - 24px);
   z-index: 200;
   display: flex;
   flex-direction: column;
   gap: 2px;
   animation: m3ScaleUp 150ms var(--m3-motion-emphasized);
+  box-sizing: border-box;
 }
 .context-menu button {
   display: flex;

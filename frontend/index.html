@@ -19,7 +19,7 @@
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260912_m3_3">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260912_m3_5">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" class="app" :class="{ 'keyboard-open': isKeyboardOpen, 'theme-dark': colorMode === 'dark', 'theme-light': colorMode === 'light' }" x-cloak>
@@ -662,7 +662,7 @@
                 </div>
 
                 <!-- Google Native App Bottom Navigation Bar -->
-                <nav class="m3-dock-nav" aria-label="移动端应用导航">
+                <nav class="m3-dock-nav" x-show="!isKeyboardOpen" aria-label="移动端应用导航">
                   <button class="m3-dock-item" :class="showMobileMenu ? 'active' : ''" @click="openMobilePanel('hosts')" aria-label="主机列表">
                     <div class="m3-dock-pill"><span class="material-symbols-rounded">dns</span></div>
                     <span class="m3-dock-label">主机</span>
@@ -1195,9 +1195,9 @@
         </div>
 
         <!-- 6. REMOTE FILE EDITOR WINDOW (MONACO / MOBILE TEXTAREA) -->
-        <div x-show="activeEditorTab" class="editor-backdrop" :class="editorWindow.minimized ? 'is-minimized' : ''">
-          <div class="editor-window" :class="{ maximized: editorWindow.maximized, minimized: editorWindow.minimized, resizing: editorWindow.resizing }">
-            <div class="editor-head" @pointerdown="startEditorDrag($event)" @dblclick="toggleEditorMaximize()">
+        <div x-show="activeEditorTab" class="editor-backdrop" :class="{ 'has-maximized': editorWindow.maximized }">
+          <div class="editor-window" :class="{ maximized: editorWindow.maximized }">
+            <div class="editor-head" @dblclick="toggleEditorMaximize()">
               <div class="editor-title">
                 <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">edit_document</span>
                 <strong x-text="activeEditorTab?.name || ''" :title="activeEditorTab?.path || ''"></strong>
@@ -1208,9 +1208,6 @@
                   <span class="material-symbols-rounded" style="font-size:18px;" x-text="editorSaveFeedback.state === 'saved' ? 'check' : (editorSaveFeedback.state === 'saving' ? 'sync' : 'save')"></span>
                   <span x-text="editorSaveFeedback.state === 'saved' ? '已保存 ✓' : (editorSaveFeedback.state === 'saving' ? '正在保存...' : '保存')"></span>
                 </button>
-                <button class="m3-icon-btn" x-show="!isMobile" @click.stop="minimizeEditor()" title="最小化">
-                  <span class="material-symbols-rounded">minimize</span>
-                </button>
                 <button class="m3-icon-btn" x-show="!isMobile" @click.stop="toggleEditorMaximize()" :title="editorWindow.maximized ? '向下还原' : '最大化'">
                   <span class="material-symbols-rounded" x-text="editorWindow.maximized ? 'fullscreen_exit' : 'fullscreen'"></span>
                 </button>
@@ -1220,7 +1217,7 @@
               </div>
             </div>
             <template x-if="activeEditorTab">
-              <div class="editor-body" x-show="!editorWindow.minimized">
+              <div class="editor-body">
                 <textarea class="editor-textarea" aria-label="编辑文件内容" autocapitalize="none" autocorrect="off" spellcheck="false" :class="monacoReady && !isMobile ? 'hidden-editor' : ''" x-model="activeEditorTab.content"></textarea>
                 <div id="monaco-editor-container" class="monaco-editor-container" :class="monacoReady && !isMobile ? '' : 'hidden-editor'" x-init="$nextTick(() => initMonacoEditor())" x-effect="updateMonacoEditor()"></div>
               </div>
@@ -1229,7 +1226,8 @@
         </div>
 
         <!-- 7. FILE CONTEXT MENU -->
-        <div x-show="contextMenu.visible" :style="`left:${contextMenu.x}px;top:${contextMenu.y}px`" class="context-menu" @click.stop>
+        <div x-show="contextMenu.visible" class="context-menu-scrim" @click="hideContextMenu()" @contextmenu.prevent="hideContextMenu()"></div>
+        <div x-show="contextMenu.visible" :style="`left:${contextMenu.x}px;top:${contextMenu.y}px`" class="context-menu" @click.stop @click.away="hideContextMenu()">
           <button @click="copyEntry()">
             <span class="material-symbols-rounded">content_copy</span>
             <span>复制</span>
@@ -1271,8 +1269,8 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/pwa.js?v=20260912_m3_3"></script>
-  <script src="/assets/js/app.js?v=20260912_m3_3"></script>
+  <script src="/assets/js/pwa.js?v=20260912_m3_5"></script>
+  <script src="/assets/js/app.js?v=20260912_m3_5"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>

@@ -204,21 +204,27 @@ function shadowApp() {
           const height = vv?.height || window.innerHeight;
           const offset = vv?.offsetTop || 0;
           const focusedInput = document.activeElement?.matches('input, textarea, [contenteditable="true"]');
-          const keyboard = this.isMobile && !!focusedInput && window.innerHeight - height > 100;
+          const keyboard = this.isMobile && (
+            (window.innerHeight - height > 75) ||
+            (!!focusedInput && (window.innerHeight - height > 50 || (window.screen?.height && window.screen.height - height > 160)))
+          );
           const root = document.documentElement.style;
           root.setProperty('--vv-height', `${height}px`);
           root.setProperty('--vv-top', `${offset}px`);
+          const keyboardStateChanged = this.isKeyboardOpen !== keyboard;
           this.isKeyboardOpen = keyboard;
           clearTimeout(this._resizeTimer);
           this._resizeTimer = setTimeout(() => {
             this.refreshActiveViewport();
+            setTimeout(() => this.refreshActiveViewport(), 80);
+            setTimeout(() => this.refreshActiveViewport(), 220);
             this.clampEditorWindow();
             const input = document.activeElement;
             if (keyboard && input?.matches('input, textarea') && !input.closest('.xterm, .monaco-editor')) {
               const rect = input.getBoundingClientRect();
               if (rect.bottom > offset + height - 12 || rect.top < offset + 12) input.scrollIntoView({ block: 'nearest' });
             }
-          }, 100);
+          }, 40);
         });
       };
       window.addEventListener('resize', update);
@@ -295,11 +301,14 @@ function shadowApp() {
       this.fitAddons[id]?.fit?.();
       const term = this.terminals[id];
       term.refresh?.(0, term.rows - 1);
+      try {
+        term.scrollToBottom?.();
+      } catch (_) {}
       setTimeout(() => {
         try {
           term.scrollToBottom?.();
         } catch (_) {}
-      }, 50);
+      }, 40);
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.socket.send(JSON.stringify({ type: 'ssh:resize', sessionId: id, payload: { cols: term.cols, rows: term.rows } }));
       }
@@ -867,9 +876,17 @@ function shadowApp() {
           const binary = atob(data);
           const bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          term.write(bytes);
+          term.write(bytes, () => {
+            if (this.isMobile && this.isKeyboardOpen) {
+              try { term.scrollToBottom(); } catch (_) {}
+            }
+          });
         } else {
-          term.write(data);
+          term.write(data, () => {
+            if (this.isMobile && this.isKeyboardOpen) {
+              try { term.scrollToBottom(); } catch (_) {}
+            }
+          });
         }
       }
 
@@ -1211,6 +1228,9 @@ function shadowApp() {
           this.ctrlKeyActive = false;
         }
         this.sendSocket({ type: 'ssh:input', sessionId: id, payload: { data: payloadData } });
+        if (this.isMobile) {
+          try { term.scrollToBottom(); } catch (_) {}
+        }
       });
       
       let selecting = false;
@@ -1923,19 +1943,12 @@ function shadowApp() {
     },
 
     toggleEditorMaximize() {
-      if (this.editorWindow.minimized) {
-        this.editorWindow.minimized = false;
-      }
-      if (this.editorWindow.maximized) {
-        this.restoreEditorGeometry();
-        return;
-      }
-      this.rememberEditorGeometry();
-      this.editorWindow.maximized = true;
+      this.editorWindow.maximized = !this.editorWindow.maximized;
       this.editorWindow.minimized = false;
       this.$nextTick(() => {
         this.layoutEditor();
-        requestAnimationFrame(() => this.layoutEditor());
+        setTimeout(() => this.layoutEditor(), 60);
+        setTimeout(() => this.layoutEditor(), 250);
       });
     },
 
@@ -2112,10 +2125,43 @@ function shadowApp() {
     },
 
     showContextMenu(event, entry) {
-      event.preventDefault();
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      const menuWidth = 175;
+      const menuHeight = 260;
+      const winW = window.innerWidth;
+      const winH = window.innerHeight;
+
+      let x = event?.clientX || 0;
+      let y = event?.clientY || 0;
+
+      const targetBtn = event?.target?.closest ? event.target.closest('button') : null;
+      if (targetBtn) {
+        const rect = targetBtn.getBoundingClientRect();
+        if (rect.right + menuWidth > winW || rect.left + menuWidth > winW) {
+          x = Math.max(12, rect.right - menuWidth);
+        } else {
+          x = Math.max(12, rect.left);
+        }
+        if (rect.bottom + menuHeight > winH - 12) {
+          y = Math.max(12, rect.top - menuHeight);
+        } else {
+          y = rect.bottom + 4;
+        }
+      } else {
+        if (x + menuWidth > winW - 12) {
+          x = Math.max(12, winW - menuWidth - 12);
+        }
+        if (y + menuHeight > winH - 12) {
+          y = Math.max(12, winH - menuHeight - 12);
+        }
+      }
+
       this.contextMenu.visible = true;
-      this.contextMenu.x = event.clientX;
-      this.contextMenu.y = event.clientY;
+      this.contextMenu.x = Math.round(x);
+      this.contextMenu.y = Math.round(y);
       this.contextMenu.entry = entry;
     },
 
