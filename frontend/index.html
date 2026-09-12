@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark" data-palette="blue">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
@@ -7,156 +7,274 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="SlateSSH">
-  <meta name="color-scheme" content="dark">
-  <meta name="description" content="SlateSSH · 随身 SSH 终端与远程文件工作台">
-  <meta name="theme-color" content="#090a0f">
-  <title>SlateSSH // Terminal Console</title>
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="SlateSSH · Material 3 Expressive 随身终端与远程文件工作台">
+  <meta name="theme-color" content="#10131a">
+  <title>SlateSSH · Material 3 Expressive Terminal</title>
   <link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/assets/icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="icon" href="/assets/icons/favicon-16.png" type="image/png" sizes="16x16">
   <link rel="shortcut icon" href="/assets/icons/favicon.ico">
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" sizes="180x180">
   <link rel="manifest" href="/assets/icons/site.webmanifest">
+  <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260910_pwa_v4">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260912_m3_3">
 </head>
-<body class="term-body">
-  <div id="app" x-data="shadowApp()" class="app theme-dark" :class="{ 'keyboard-open': isKeyboardOpen }" x-cloak>
+<body>
+  <div id="app" x-data="shadowApp()" class="app" :class="{ 'keyboard-open': isKeyboardOpen, 'theme-dark': colorMode === 'dark', 'theme-light': colorMode === 'light' }" x-cloak>
     
+    <!-- Material 3 Top App Bar -->
     <header class="app-chrome" x-show="authenticated">
-      <a class="app-brand" href="/" @click.prevent="authenticated && sessions.length ? openMobilePanel('hosts') : null" aria-label="SlateSSH 主机目录"><span class="brand-glyph" aria-hidden="true">&gt;_</span> SlateSSH<span class="chrome-path" x-text="authenticated ? '~/workspace' : '~/login'"></span></a>
+      <a class="app-brand" href="/" @click.prevent="authenticated && sessions.length ? openMobilePanel('hosts') : null" aria-label="SlateSSH 主页">
+        <div class="app-brand-logo">
+          <span class="material-symbols-rounded">terminal</span>
+        </div>
+        <div class="brand-title">
+          <span class="brand-name">SlateSSH</span>
+          <span class="brand-subtitle" x-text="sessions.length ? (activeSessionType() + ' 会话 · ' + sessions.length + ' 个活动') : 'Material 3 工作台'"></span>
+        </div>
+      </a>
       <div class="chrome-actions">
-        <span class="network-state" :class="isOnline ? '' : 'offline'" role="status"><span class="status-dot"></span><span x-text="isOnline ? 'ONLINE' : 'OFFLINE'"></span></span>
-        <button class="term-btn-mini" x-show="!isStandalone" @click="installApp()" aria-label="安装 SlateSSH 应用">[ 安装 ]</button>
-        <button class="term-btn-mini" x-show="isMobile && sessions.length" @click="openMobilePanel('hosts')" :aria-expanded="showMobileMenu" aria-label="打开主机目录">[ Hosts ]</button>
+        <!-- Theme & Palette Picker Trigger -->
+        <button class="m3-icon-btn" @click="showThemePicker = true" title="主题与配色设置" aria-label="主题与配色设置">
+          <span class="material-symbols-rounded">palette</span>
+        </button>
+        <!-- Dark / Light Mode Toggle -->
+        <button class="m3-icon-btn" @click="toggleColorMode()" :title="colorMode === 'dark' ? '切换为白天模式' : '切换为黑夜模式'" aria-label="切换黑白模式">
+          <span class="material-symbols-rounded" x-text="colorMode === 'dark' ? 'light_mode' : 'dark_mode'"></span>
+        </button>
+        <!-- PWA Install Button -->
+        <button class="m3-icon-btn" x-show="!isStandalone" @click="installApp()" title="安装为独立应用" aria-label="安装应用">
+          <span class="material-symbols-rounded">install_mobile</span>
+        </button>
+        <!-- Logout Button -->
+        <button class="m3-icon-btn" @click="logout()" title="退出登录" aria-label="退出登录">
+          <span class="material-symbols-rounded">logout</span>
+        </button>
       </div>
     </header>
-    <div class="app-notice" x-show="!isOnline" role="status">[OFFLINE] 网络已离线。应用界面仍可打开，连接服务器需要恢复网络。</div>
-    <div class="app-notice update-notice" x-show="updateAvailable" role="status">
-      <span x-text="sessions.length ? '新版本已就绪，关闭所有会话后可更新。' : '新版本已就绪。'"></span>
-      <button class="term-btn-mini" @click="applyAppUpdate()" :disabled="sessions.length > 0">[ 更新 ]</button>
+
+    <!-- Global Offline & Update Notice Banners -->
+    <div class="app-notice" x-show="!isOnline" role="status">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="material-symbols-rounded">wifi_off</span>
+        <span>当前网络已离线。离线应用外壳正常可用，连接服务器需恢复网络。</span>
+      </div>
     </div>
+    <div class="app-notice update-notice" x-show="updateAvailable" role="status">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="material-symbols-rounded">system_update</span>
+        <span x-text="sessions.length ? '新版本已就绪，关闭全部会话后可立即更新。' : 'SlateSSH 新版本已就绪。'"></span>
+      </div>
+      <button class="m3-btn m3-btn-filled" style="height:32px;padding:0 14px;font-size:0.82rem;" @click="applyAppUpdate()" :disabled="sessions.length > 0">立即更新</button>
+    </div>
+
+    <!-- PWA Install Guide Modal -->
     <div class="modal-backdrop" x-show="showInstallHelp" @click.self="showInstallHelp = false" x-effect="syncDialog($el, showInstallHelp)" role="dialog" aria-modal="true" aria-label="安装 SlateSSH">
-      <section class="install-card">
-        <div class="modal-head"><span class="modal-title">=== [ INSTALL SLATESSH PWA ] ===</span><button class="term-btn-mini" @click="showInstallHelp = false">[ Close X ]</button></div>
-        <div class="install-content"><p>Safari: 点击分享按钮 -&gt;「添加到主屏幕」-&gt; 开启独立应用窗口体验。</p><p x-show="!secureContext" class="term-msg info">[NOTE] 请使用 HTTPS 地址以启用离线加载与应用更新。</p></div>
+      <section class="m3-dialog install-card">
+        <div class="modal-head">
+          <span class="modal-title">安装 SlateSSH 到桌面 / 主屏幕</span>
+          <button class="m3-icon-btn" @click="showInstallHelp = false" aria-label="关闭">
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;line-height:1.6;color:var(--md-sys-color-on-surface-variant);">
+          <p><strong>iOS / Safari：</strong>点击底部工具栏的「分享」按钮 <span class="material-symbols-rounded" style="font-size:18px;vertical-align:middle;">ios_share</span>，向下滚动选择「添加到主屏幕」，即可享受原生 Google App 般的独立全屏体验。</p>
+          <p><strong>Chrome / Edge：</strong>点击地址栏右侧的「安装」图标，或在菜单中选择「安装 SlateSSH」。</p>
+          <p x-show="!secureContext" style="color:var(--md-sys-color-error);font-weight:600;">[注意] 生产环境请使用 HTTPS 地址以确保 Service Worker 离线缓存与应用更新正常工作。</p>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:24px;">
+          <button class="m3-btn m3-btn-filled" @click="showInstallHelp = false">知道了</button>
+        </div>
       </section>
     </div>
 
-    <!-- Booting screen (only when not authenticated) -->
+    <!-- Material 3 Theme & Palette Picker Modal -->
+    <div class="modal-backdrop" x-show="showThemePicker" @click.self="showThemePicker = false" x-effect="syncDialog($el, showThemePicker)" role="dialog" aria-modal="true" aria-label="选择主题与外观">
+      <section class="m3-dialog">
+        <div class="modal-head">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">palette</span>
+            <span class="modal-title">Material 3 外观风格</span>
+          </div>
+          <button class="m3-icon-btn" @click="showThemePicker = false" aria-label="关闭">
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
+
+        <div style="font-size:0.9rem;font-weight:600;color:var(--md-sys-color-on-surface-variant);margin-bottom:8px;">
+          选择 Expressive 动态配色（至少 7 种 Google 风格主题）
+        </div>
+
+        <div class="theme-picker-grid">
+          <template x-for="p in availablePalettes" :key="p.id">
+            <div class="palette-swatch-card" :class="palette === p.id ? 'active' : ''" @click="setPalette(p.id)">
+              <div class="swatch-circle" :style="'background-color: ' + p.color"></div>
+              <span class="palette-name" x-text="p.name"></span>
+            </div>
+          </template>
+        </div>
+
+        <div style="font-size:0.9rem;font-weight:600;color:var(--md-sys-color-on-surface-variant);margin:16px 0 8px 0;">
+          显示模式 (Light &amp; Dark Mode)
+        </div>
+        <div class="mode-toggle-group">
+          <button class="mode-toggle-btn" :class="colorMode === 'light' ? 'active' : ''" @click="setColorMode('light')">
+            <span class="material-symbols-rounded">light_mode</span>
+            <span>白天模式 (Light)</span>
+          </button>
+          <button class="mode-toggle-btn" :class="colorMode === 'dark' ? 'active' : ''" @click="setColorMode('dark')">
+            <span class="material-symbols-rounded">dark_mode</span>
+            <span>黑夜模式 (Dark)</span>
+          </button>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:24px;">
+          <button class="m3-btn m3-btn-filled" @click="showThemePicker = false">完成设置</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Booting screen -->
     <template x-if="booting && !authenticated && !needsSetup">
-      <div class="auth-page term-page term-tty-screen">
-        <div class="term-boot-line">
-          <span class="term-prompt">system:</span> Initializing SlateSSH secure terminal gateway...<span class="term-cursor">_</span>
+      <div class="auth-page">
+        <div class="m3-auth-card" style="align-items:center;text-align:center;">
+          <div class="auth-icon-badge" style="animation:m3Pulse 1.5s infinite;">
+            <span class="material-symbols-rounded">terminal</span>
+          </div>
+          <h2 class="auth-title">SlateSSH</h2>
+          <p class="auth-subtitle">正在启动安全终端网关...</p>
+          <div class="m3-progress-linear indeterminate" style="margin-top:24px;">
+            <div class="m3-progress-indicator"></div>
+          </div>
         </div>
       </div>
     </template>
 
-    <!-- First time setup screen -->
+    <!-- First time administrator setup screen -->
     <template x-if="!booting && needsSetup">
-      <div class="auth-page term-page">
-        <pre class="term-ascii-banner">
-  ____  _       _       ____ ____  _   _ 
- / ___|| | __ _| |_ ___/ ___/ ___|| | | |
- \___ \| |/ _` | __/ _ \___ \___ \| |_| |
-  ___) | | (_| | ||  __/___) |__) |  _  |
- |____/|_|\__,_|\__\___|____/____/|_| |_|
-</pre>
-        <div class="term-subbanner">&gt;&gt;&gt; SlateSSH Initial Setup: Create Administrator &lt;&lt;&lt;</div>
-        <form @submit.prevent="setup()" class="term-auth-form">
-          <div class="term-prompt-row">
-            <span class="term-prompt">create admin username:</span>
-            <input x-model="setupForm.username" autocomplete="username" class="term-input" placeholder="admin" aria-label="管理员用户名" autocapitalize="none" autocorrect="off" required>
+      <main class="auth-page">
+        <section class="m3-auth-card" aria-labelledby="setup-title">
+          <div class="auth-header">
+            <div class="auth-icon-badge">
+              <span class="material-symbols-rounded">admin_panel_settings</span>
+            </div>
+            <h1 id="setup-title" class="auth-title">初始化配置</h1>
+            <p class="auth-subtitle">欢迎使用 SlateSSH，请创建管理员账户以开始使用</p>
           </div>
-          <div class="term-prompt-row">
-            <span class="term-prompt">enter new password:</span>
-            <input x-model="setupForm.password" type="password" autocomplete="new-password" aria-label="管理员密码" class="term-input" placeholder="••••••••" required>
+
+          <div class="m3-error-banner" x-show="error" role="alert">
+            <span class="material-symbols-rounded">error</span>
+            <span x-text="error"></span>
           </div>
-          <div class="term-prompt-row">
-            <span class="term-prompt">confirm password:</span>
-            <input x-model="setupForm.confirmPassword" type="password" autocomplete="new-password" aria-label="管理员密码" class="term-input" placeholder="••••••••" required>
-          </div>
-          <p class="term-msg error" x-show="error" x-text="error"></p>
-          <div class="term-form-actions">
-            <button class="term-btn primary" type="submit">[ Execute Setup ]</button>
-          </div>
-        </form>
-      </div>
+
+          <form @submit.prevent="setup()" class="m3-form">
+            <div class="m3-field-wrap">
+              <label class="m3-field-label" for="setup-username">管理员用户名</label>
+              <input id="setup-username" x-model="setupForm.username" autocomplete="username" class="m3-input" placeholder="admin" autocapitalize="none" autocorrect="off" required>
+            </div>
+            <div class="m3-field-wrap">
+              <label class="m3-field-label" for="setup-password">新密码</label>
+              <input id="setup-password" x-model="setupForm.password" type="password" autocomplete="new-password" class="m3-input" placeholder="••••••••" required>
+            </div>
+            <div class="m3-field-wrap">
+              <label class="m3-field-label" for="setup-confirm">确认新密码</label>
+              <input id="setup-confirm" x-model="setupForm.confirmPassword" type="password" autocomplete="new-password" class="m3-input" placeholder="••••••••" required>
+            </div>
+            <div style="margin-top:24px;">
+              <button class="m3-btn m3-btn-filled" style="width:100%;height:46px;" type="submit">
+                <span class="material-symbols-rounded">check_circle</span>
+                <span>完成初始化并登录</span>
+              </button>
+            </div>
+          </form>
+        </section>
+      </main>
     </template>
 
-    <!-- Pure Linux native console login screen (TTY1) -->
+    <!-- Material 3 Expressive Login Screen (Google Account Card Style) -->
     <template x-if="!booting && !needsSetup && !authenticated">
-      <main class="auth-page term-page term-tty-screen" @click="focusLoginInput(true)">
-        <section class="auth-console term-tty-console" aria-labelledby="login-title">
-          <div class="term-tty-banner">
-            <div>SlateSSH Linux 6.8.0-slatessh (tty1)</div>
-            <div class="term-tty-motd">Type authorized credentials to establish session.</div>
+      <main class="auth-page" @click="focusLoginInput(true)">
+        <section class="m3-auth-card auth-console" aria-labelledby="login-title">
+          <div class="auth-header">
+            <div class="auth-icon-badge">
+              <span class="material-symbols-rounded">lock</span>
+            </div>
+            <h1 id="login-title" class="auth-title">登录 SlateSSH</h1>
+            <p class="auth-subtitle">基于 Material 3 Expressive 的随身安全终端</p>
           </div>
 
-          <div class="term-tty-error" x-show="error" x-text="error" role="alert"></div>
+          <div class="m3-error-banner term-tty-error" x-show="error" role="alert">
+            <span class="material-symbols-rounded">error</span>
+            <span x-text="error"></span>
+          </div>
 
-          <form @submit.prevent="loginStep === 'username' ? handleUsernameSubmit() : login()" class="term-tty-form" autocomplete="off">
-            <!-- Step 1: Username prompt -->
-            <div class="term-tty-line">
-              <label for="term-login-username" class="term-tty-prompt">slatessh login:</label>
-              <template x-if="loginStep === 'username'">
-                <div class="term-tty-input-row">
-                  <input
-                    id="term-login-username"
-                    name="username"
-                    x-model="loginForm.username"
-                    type="text"
-                    autocomplete="off"
-                    autocapitalize="none"
-                    autocorrect="off"
-                    spellcheck="false"
-                    enterkeyhint="next"
-                    class="term-tty-input"
-                    autofocus
-                    required
-                  >
-                  <span class="term-cursor" aria-hidden="true">_</span>
-                </div>
-              </template>
-              <template x-if="loginStep === 'password'">
-                <span class="term-tty-val" x-text="loginForm.username" @click.stop="resetLoginStep()" title="Click to change username"></span>
-              </template>
+          <form @submit.prevent="login()" autocomplete="on">
+            <div class="m3-field-wrap">
+              <label class="m3-field-label term-tty-prompt" for="term-login-username">用户名 (Username)</label>
+              <div style="position:relative;display:flex;align-items:center;">
+                <input
+                  id="term-login-username"
+                  name="username"
+                  x-model="loginForm.username"
+                  type="text"
+                  autocomplete="username"
+                  autocapitalize="none"
+                  autocorrect="off"
+                  spellcheck="false"
+                  placeholder="例如: root / admin"
+                  class="m3-input term-input"
+                  style="padding-left:42px;"
+                  required
+                >
+                <span class="material-symbols-rounded" style="position:absolute;left:12px;color:var(--md-sys-color-outline);pointer-events:none;">person</span>
+              </div>
             </div>
 
-            <!-- Step 2: Password prompt -->
-            <div class="term-tty-line" x-show="loginStep === 'password'">
-              <label for="term-login-password" class="term-tty-prompt">Password:</label>
-              <div class="term-tty-input-row">
+            <div class="m3-field-wrap">
+              <label class="m3-field-label term-tty-prompt" for="term-login-password">密码 (Password)</label>
+              <div style="position:relative;display:flex;align-items:center;">
                 <input
                   id="term-login-password"
                   name="password"
                   x-model="loginForm.password"
-                  type="password"
-                  autocomplete="off"
+                  :type="showPassword ? 'text' : 'password'"
+                  autocomplete="current-password"
                   autocapitalize="none"
                   autocorrect="off"
                   spellcheck="false"
-                  enterkeyhint="go"
-                  class="term-tty-input"
-                  @keydown.backspace="if (!loginForm.password) resetLoginStep()"
-                  @keydown.escape.prevent="resetLoginStep()"
+                  placeholder="请输入您的登录密码"
+                  class="m3-input term-input"
+                  style="padding-left:42px;padding-right:42px;"
+                  required
                 >
-                <span class="term-cursor" aria-hidden="true">_</span>
+                <span class="material-symbols-rounded" style="position:absolute;left:12px;color:var(--md-sys-color-outline);pointer-events:none;">key</span>
+                <button type="button" class="m3-icon-btn" style="position:absolute;right:4px;width:36px;height:36px;" @click="showPassword = !showPassword" :title="showPassword ? '隐藏密码' : '显示密码'">
+                  <span class="material-symbols-rounded" style="font-size:20px;" x-text="showPassword ? 'visibility_off' : 'visibility'"></span>
+                </button>
               </div>
             </div>
 
-            <button type="submit" class="term-hidden-submit" tabindex="-1" aria-hidden="true"></button>
+            <div class="auth-options">
+              <label class="m3-checkbox-label">
+                <input type="checkbox" x-model="loginForm.rememberMe">
+                <span>记住此设备</span>
+              </label>
+              <button type="button" class="m3-btn-text" style="font-size:0.85rem;" @click="showThemePicker = true">
+                <span class="material-symbols-rounded" style="font-size:16px;">palette</span>
+                <span>主题配色</span>
+              </button>
+            </div>
+
+            <div style="margin-top:12px;">
+              <button class="m3-btn m3-btn-filled primary" style="width:100%;height:48px;" type="submit" :disabled="authSubmitting">
+                <span x-show="!authSubmitting" class="material-symbols-rounded">login</span>
+                <span x-show="authSubmitting" class="material-symbols-rounded" style="animation:m3Pulse 1s infinite;">sync</span>
+                <span x-text="authSubmitting ? '正在验证凭据...' : '连接工作台 →'"></span>
+              </button>
+            </div>
           </form>
-
-          <!-- Subtle mobile helper buttons -->
-          <div class="term-tty-sub-hint" x-show="isMobile">
-            <button type="button" class="term-btn-mini" x-show="loginStep === 'username'" @click.stop="handleUsernameSubmit()">[ Next ↵ ]</button>
-            <button type="button" class="term-btn-mini primary" x-show="loginStep === 'password'" :disabled="authSubmitting" @click.stop="login()">
-              <span x-text="authSubmitting ? '[ Authenticating... ]' : '[ Login ↵ ]'"></span>
-            </button>
-            <button type="button" class="term-btn-mini" x-show="loginStep === 'password'" @click.stop="resetLoginStep()">[ Back ]</button>
-          </div>
-
         </section>
       </main>
     </template>
@@ -165,236 +283,343 @@
     <template x-if="authenticated">
       <div class="workspace-root">
 
-        <!-- INITIAL STATE: Minimal Linux Host Launcher when no active session -->
+        <!-- 1. INITIAL STATE: Material 3 Host Launcher when no active session -->
         <template x-if="!sessions.length">
           <div class="centered-launcher-wrap">
-            <div class="launcher-term-container">
-              <div class="launcher-cli-header">
-                <span class="term-prompt">user@slatessh:~$</span>
-                <span class="cli-cmd">hosts --list</span>
-                <span class="cli-meta" x-text="'[' + filteredConnections.length + '/' + connections.length + ' saved]'"></span>
+            
+            <!-- Banner Header -->
+            <div class="launcher-banner">
+              <div class="launcher-title-group">
+                <h2>远程主机工作台</h2>
+                <p x-text="'共保存 ' + connections.length + ' 台主机 · 当前已过滤 ' + filteredConnections.length + ' 台'"></p>
               </div>
-              
-              <!-- Clean minimal CLI search & action bar -->
-              <div class="launcher-cli-bar">
-                <div class="launcher-search-box">
-                  <span class="term-prompt">filter&gt;</span>
-                  <input x-model="connectionQuery" type="search" aria-label="搜索主机或 IP" placeholder="search host or ip..." class="term-cli-search" autocomplete="off">
-                  <button x-show="connectionQuery" @click="connectionQuery = ''" class="term-btn-mini">[x]</button>
-                </div>
-                <div class="launcher-actions-top">
-                  <button class="term-btn primary" @click="newConnection('SSH', 'manager')">[ + New Host ]</button>
-                  <button class="term-btn" @click="showConnectionManager = true">[ Manager ]</button>
-                  <button class="term-btn" @click="logout()">[ Logout ]</button>
-                </div>
+              <div class="launcher-actions-top" style="display:flex;gap:10px;">
+                <button class="m3-btn m3-btn-filled primary" @click="newConnection('SSH', 'launcher')">
+                  <span class="material-symbols-rounded">add</span>
+                  <span>新建主机</span>
+                </button>
+                <button class="m3-btn m3-btn-tonal" @click="showConnectionManager = true">
+                  <span class="material-symbols-rounded">settings</span>
+                  <span>主机管理</span>
+                </button>
               </div>
+            </div>
 
-              <!-- Monospace host table seamless with background -->
-              <div class="launcher-list-wrap">
-                <div class="launcher-table-head">
-                  <div class="launcher-table-head-info">
-                    <span class="col-idx">#</span>
-                    <span class="col-type">TYPE</span>
-                    <span class="col-name">NAME</span>
-                    <span class="col-dest">TARGET HOST</span>
-                  </div>
-                  <span class="col-act" style="width: 190px;"></span>
+            <!-- Toolbar: Search Bar & Protocol Filter Chips -->
+            <div class="launcher-toolbar">
+              <div class="launcher-search-wrap">
+                <div class="m3-search-bar">
+                  <span class="material-symbols-rounded">search</span>
+                  <input x-model="connectionQuery" type="search" aria-label="搜索主机或 IP" placeholder="按名称、主机名或 IP 搜索..." class="term-cli-search" autocomplete="off">
+                  <button x-show="connectionQuery" @click="connectionQuery = ''" class="m3-icon-btn" style="width:28px;height:28px;" aria-label="清空搜索">
+                    <span class="material-symbols-rounded" style="font-size:18px;">close</span>
+                  </button>
                 </div>
-                <div class="launcher-table-rows">
-                  <template x-for="(connection, idx) in filteredConnections" :key="connection.id">
-                    <div class="launcher-row" @click="openSession(connection)">
-                      <div class="launcher-row-info">
-                        <span class="col-idx" x-text="'[' + (idx + 1) + ']'"></span>
-                        <span class="col-type"><span class="term-badge" x-text="connection.type || 'SSH'"></span></span>
-                        <span class="col-name"><strong x-text="connection.name"></strong></span>
-                        <span class="col-dest" x-text="(connection.username || 'root') + '@' + connection.host + ':' + connection.port"></span>
+              </div>
+            </div>
+
+            <!-- Material 3 Expressive Host Cards Grid -->
+            <div class="launcher-cards-grid launcher-list-wrap">
+              <template x-for="(connection, idx) in filteredConnections" :key="connection.id">
+                <div class="m3-host-card launcher-row" @click="openSession(connection)">
+                  <div>
+                    <div class="host-card-top launcher-row-info">
+                      <div class="host-card-icon">
+                        <span class="material-symbols-rounded" x-text="connection.type === 'RDP' ? 'desktop_windows' : 'dns'"></span>
                       </div>
-                      <div class="col-act" @click.stop>
-                        <button class="term-btn primary" @click="openSession(connection)" :disabled="connection.connecting">
-                          <span x-show="!connection.connecting">[ Connect ]</span>
-                          <span x-show="connection.connecting" x-text="'[ ' + currentSpinner + ' Connecting... ]'"></span>
-                        </button>
-                        <button class="term-btn" @click="testSavedConnection(connection.id)">[ Test ]</button>
-                        <button class="term-btn" @click="editConnection(connection, 'manager')">[ Edit ]</button>
+                      <div class="host-card-info">
+                        <h3 class="host-name col-name" x-text="connection.name"></h3>
+                        <div class="host-dest col-dest" x-text="(connection.username || 'root') + '@' + connection.host + ':' + connection.port"></div>
+                        <span class="host-badge-chip term-badge" x-text="connection.type || 'SSH'"></span>
                       </div>
                     </div>
-                  </template>
-                  <div class="launcher-empty" x-show="!connections.length">
-                    -- No hosts saved. Click [ + New Host ] to add a connection. --
                   </div>
-                  <div class="launcher-empty" x-show="connections.length && !filteredConnections.length">
-                    -- No matching hosts found for search. --
+                  <div class="host-card-actions col-act" @click.stop>
+                    <button class="m3-btn m3-btn-filled primary" @click="openSession(connection)" :disabled="connection.connecting">
+                      <span class="material-symbols-rounded" x-show="!connection.connecting">play_arrow</span>
+                      <span class="material-symbols-rounded" x-show="connection.connecting" style="animation:m3Pulse 1s infinite;">sync</span>
+                      <span x-show="!connection.connecting">连接</span>
+                      <span x-show="connection.connecting">正在连接...</span>
+                    </button>
+                    <div style="display:flex;gap:4px;">
+                      <button class="m3-btn m3-btn-tonal" @click="testSavedConnection(connection.id)" title="测试连通性">
+                        <span class="material-symbols-rounded">speed</span>
+                        <span>测试</span>
+                      </button>
+                      <button class="m3-btn m3-btn-tonal" @click="editConnection(connection, 'launcher')" title="编辑配置">
+                        <span class="material-symbols-rounded">edit</span>
+                        <span>编辑</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </template>
 
+              <!-- Empty state when no connections -->
+              <div class="m3-empty-state launcher-empty" x-show="!connections.length">
+                <span class="material-symbols-rounded">cloud_off</span>
+                <h3>尚未添加任何主机</h3>
+                <p style="margin-bottom:20px;">点击下方按钮添加第一台远程 SSH 或 RDP 服务器。</p>
+                <button class="m3-btn m3-btn-filled primary" @click="newConnection('SSH', 'launcher')">
+                  <span class="material-symbols-rounded">add</span>
+                  <span>新建主机配置</span>
+                </button>
+              </div>
+              <div class="m3-empty-state launcher-empty" x-show="connections.length && !filteredConnections.length">
+                <span class="material-symbols-rounded">search_off</span>
+                <h3>未找到匹配的主机</h3>
+                <p>请尝试其他搜索关键词或清空搜索框。</p>
+              </div>
             </div>
+
+            <!-- Floating Action Button (+ New Host) -->
+            <button class="m3-fab" style="position:fixed;bottom:32px;right:32px;" @click="newConnection('SSH', 'launcher')" aria-label="新建主机">
+              <span class="material-symbols-rounded">add</span>
+              <span>新建主机</span>
+            </button>
+
           </div>
         </template>
 
-        <!-- ACTIVE STATE: Seamless 3-Panel Terminal Layout -->
+        <!-- 2. ACTIVE STATE: Material 3 Multi-Panel / Responsive Stage -->
         <template x-if="sessions.length > 0">
           <div class="main-grid" :class="{ 'sidebar-hidden': !showSidebar, 'utilities-hidden': !(showSftpWidget || showStatusWidget) }">
             
+            <!-- Mobile Scrim for Drawer -->
             <button class="drawer-scrim" x-show="isMobile && showMobileMenu" @click="showMobileMenu = false" aria-label="关闭主机目录"></button>
-            <!-- LEFT PANEL: Host Directory -->
+
+            <!-- LEFT PANEL: Host Directory Drawer -->
             <aside class="connection-panel" x-show="isMobile ? showMobileMenu : showSidebar" :class="isMobile ? (showMobileMenu ? 'mobile-drawer left open' : 'mobile-drawer left') : ''">
               <div class="panel-section-title">
-                <span>// HOST DIRECTORY</span><button x-show="isMobile" class="term-btn-mini" @click="showMobileMenu = false" aria-label="关闭主机目录">[ × ]</button>
-                <button class="term-btn" @click="newConnection('SSH', 'sidebar')" title="Add connection">[+ New]</button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">dns</span>
+                  <span>主机目录</span>
+                </div>
+                <div style="display:flex;gap:4px;">
+                  <button class="m3-icon-btn" @click="newConnection('SSH', 'sidebar')" title="添加新主机">
+                    <span class="material-symbols-rounded">add</span>
+                  </button>
+                  <button x-show="isMobile" class="m3-icon-btn" @click="showMobileMenu = false" aria-label="关闭主机目录">
+                    <span class="material-symbols-rounded">close</span>
+                  </button>
+                </div>
               </div>
 
-              <div class="term-search-inline">
-                <span class="term-prompt">&gt;</span>
-                <input x-model="connectionQuery" type="search" placeholder="filter hosts..." class="term-input" autocomplete="off">
-                <button x-show="connectionQuery" @click="connectionQuery = ''" class="term-btn-mini">[x]</button>
+              <!-- Search in sidebar -->
+              <div style="padding:10px 12px;">
+                <div class="m3-search-bar" style="height:38px;">
+                  <span class="material-symbols-rounded" style="font-size:18px;">search</span>
+                  <input x-model="connectionQuery" type="search" placeholder="筛选主机..." class="term-input" autocomplete="off" style="font-size:0.85rem;">
+                  <button x-show="connectionQuery" @click="connectionQuery = ''" class="m3-icon-btn" style="width:24px;height:24px;">
+                    <span class="material-symbols-rounded" style="font-size:16px;">close</span>
+                  </button>
+                </div>
               </div>
 
+              <!-- Host items -->
               <div class="connection-list">
                 <template x-for="connection in filteredConnections" :key="connection.id">
                   <div class="connection-item" :class="isConnectionActive(connection) ? 'active' : ''" @click="openSession(connection)">
                     <div class="connection-main">
-                      <span class="term-badge" x-text="connection.connecting ? currentSpinner : (connection.type || 'SSH')"></span>
+                      <span class="material-symbols-rounded" style="font-size:20px;color:var(--md-sys-color-primary);" x-text="connection.type === 'RDP' ? 'desktop_windows' : 'terminal'"></span>
                       <span class="item-name" x-text="connection.name"></span>
                     </div>
-                    <div class="connection-tools">
-                      <button @click.stop="testSavedConnection(connection.id)" class="term-btn-mini" title="Test Connection">[T]</button>
-                      <button @click.stop="editConnection(connection, 'sidebar')" class="term-btn-mini" title="Edit Connection">[E]</button>
+                    <div style="display:flex;gap:4px;" @click.stop>
+                      <button @click.stop="testSavedConnection(connection.id)" class="m3-icon-btn" style="width:32px;height:32px;" title="测试连通性">
+                        <span class="material-symbols-rounded" style="font-size:16px;">speed</span>
+                      </button>
+                      <button @click.stop="editConnection(connection, 'sidebar')" class="m3-icon-btn" style="width:32px;height:32px;" title="编辑配置">
+                        <span class="material-symbols-rounded" style="font-size:16px;">edit</span>
+                      </button>
                     </div>
                   </div>
                 </template>
-                <div class="empty-term" x-show="!connections.length">-- No saved hosts --</div>
-                <div class="empty-term" x-show="connections.length && !filteredConnections.length">-- No matches --</div>
               </div>
 
-              <!-- Sidebar bottom collapse and manager controls -->
+              <!-- Sidebar bottom collapse -->
               <div class="connection-panel-bottom">
-                <button class="term-btn" @click="showConnectionManager = true">[ Manager ]</button>
-                <button class="term-btn" @click="isMobile ? showMobileMenu = false : toggleSidebarPanel()"><span x-text="isMobile ? '[ 关闭 ]' : '[ &lt;&lt; Collapse ]'"></span></button>
+                <button class="m3-btn m3-btn-tonal" style="flex:1;" @click="showConnectionManager = true">
+                  <span class="material-symbols-rounded">settings</span>
+                  <span>管理</span>
+                </button>
+                <button class="m3-btn m3-btn-tonal" @click="isMobile ? showMobileMenu = false : toggleSidebarPanel()">
+                  <span class="material-symbols-rounded" x-text="isMobile ? 'close' : 'chevron_left'"></span>
+                  <span x-text="isMobile ? '关闭' : '收起'"></span>
+                </button>
               </div>
             </aside>
 
-            <!-- Expander for sidebar when collapsed -->
-            <button x-show="!isMobile && !showSidebar" @click="toggleSidebarPanel()" class="sidebar-edge-toggle" title="Expand Host List">[ &gt;&gt; Hosts ]</button>
+            <!-- Expander tabs when panels are collapsed on PC -->
+            <button x-show="!isMobile && !showSidebar" @click="toggleSidebarPanel()" class="sidebar-edge-toggle" title="展开左侧主机目录">
+              <span class="material-symbols-rounded">chevron_right</span>
+            </button>
+            <button x-show="!isMobile && !(showSftpWidget || showStatusWidget)" @click="toggleUtilityPanel()" class="utility-edge-toggle" title="展开右侧面板">
+              <span class="material-symbols-rounded">chevron_left</span>
+            </button>
 
             <!-- CENTER PANEL: Terminal Command Stage -->
             <section class="terminal-panel" :class="isFullscreen ? 'has-fullscreen' : ''">
               
-              <!-- Tab bar -->
+              <!-- Tab bar (Pill Tabs) -->
               <div class="tabbar">
+                <!-- Button to uncollapse left sidebar when collapsed -->
+                <button x-show="!isMobile && !showSidebar" @click="toggleSidebarPanel()" class="m3-btn m3-btn-tonal" style="height:34px;padding:0 12px;margin-right:8px;flex-shrink:0;" title="展开左侧主机目录">
+                  <span class="material-symbols-rounded" style="font-size:18px;">view_sidebar</span>
+                  <span>展开主机</span>
+                </button>
+
                 <template x-for="(tab, idx) in sessions" :key="tab.id">
-                  <div class="tab-wrapper" :class="activeSessionId === tab.id ? 'active' : ''">
-                    <button @click="activateSession(tab.id)" class="tab" :class="activeSessionId === tab.id ? 'active' : ''">
-                      <span class="tab-badge" x-text="'#' + (idx + 1)"></span>
-                      <span class="tab-type" x-text="'[' + (tab.connecting ? currentSpinner : (tab.type || 'SSH')) + ']'"></span>
-                      <span class="tab-name" x-text="tab.name"></span>
+                  <div class="tab-wrapper" :class="activeSessionId === tab.id ? 'active' : ''" @click="activateSession(tab.id)">
+                    <span class="material-symbols-rounded" style="font-size:18px;" x-text="tab.type === 'RDP' ? 'desktop_windows' : 'terminal'"></span>
+                    <span class="tab" x-text="tab.name"></span>
+                    <button class="tab-close" @click.stop="closeTab(tab.id)" :aria-label="'关闭会话 ' + tab.name">
+                      <span class="material-symbols-rounded" style="font-size:14px;">close</span>
                     </button>
-                    <button class="tab-close" @click="closeTab(tab.id)" :aria-label="'关闭会话 ' + tab.name">×</button>
                   </div>
                 </template>
-                <button class="tab-new" @click="showConnectionManager = true" title="New Session">[ + ]</button>
+                <button class="tab-new" @click="showConnectionManager = true" title="新建会话" aria-label="新建会话">
+                  <span class="material-symbols-rounded">add</span>
+                </button>
                 <div style="flex:1"></div>
-                <button x-show="!isMobile && !(showSftpWidget || showStatusWidget)" @click="toggleUtilityPanel()" class="term-btn-mini" title="Show Side Panel">[ Files &gt;&gt; ]</button>
+                <!-- Button to uncollapse right utility panel when collapsed -->
+                <button x-show="!isMobile && !(showSftpWidget || showStatusWidget)" @click="toggleUtilityPanel()" class="m3-btn m3-btn-tonal" style="height:34px;padding:0 12px;font-size:0.85rem;flex-shrink:0;" title="展开文件与监控面板">
+                  <span class="material-symbols-rounded" style="font-size:18px;">dock_to_left</span>
+                  <span>展开侧栏</span>
+                </button>
               </div>
 
-              <!-- Terminal Command Bar -->
+              <!-- Terminal Toolbar (Desktop) -->
               <div class="terminal-commandbar" x-show="activeSessionId && !isMobile">
-                <button class="term-btn" @click="openTerminalCopyViewer()">[ Copy ]</button>
-                <button class="term-btn" @click="openTerminalPasteBox()">[ Paste ]</button>
-                <button class="term-btn" @click="clearActiveTerminal()">[ Clear ]</button>
-                <div class="terminal-search-box" x-show="!isMobile">
-                  <span class="term-prompt">find:</span>
-                  <input x-model="terminalSearch" @keydown.enter="searchTerminal()" placeholder="search terminal buffer..." class="term-input">
+                <button class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.82rem;" @click="openTerminalCopyViewer()">
+                  <span class="material-symbols-rounded" style="font-size:18px;">content_copy</span>
+                  <span>复制输出</span>
+                </button>
+                <button class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.82rem;" @click="openTerminalPasteBox()">
+                  <span class="material-symbols-rounded" style="font-size:18px;">content_paste</span>
+                  <span>粘贴命令</span>
+                </button>
+                <button class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.82rem;" @click="clearActiveTerminal()">
+                  <span class="material-symbols-rounded" style="font-size:18px;">delete_sweep</span>
+                  <span>清屏</span>
+                </button>
+                
+                <div class="terminal-search-box">
+                  <span class="material-symbols-rounded" style="font-size:16px;">search</span>
+                  <input x-model="terminalSearch" @keydown.enter="searchTerminal()" placeholder="在终端缓冲区中搜索..." class="term-input">
                 </div>
-                <button class="term-btn" x-show="!isMobile" @click="findPreviousTerminalResult()">[ &lt; Prev ]</button>
-                <button class="term-btn" x-show="!isMobile" @click="findNextTerminalResult()">[ Next &gt; ]</button>
-                <button @click="toggleFullscreen()" class="term-btn" x-text="isFullscreen ? '[ Window ]' : '[ Fullscreen ]'"></button>
+                <button class="m3-icon-btn" style="width:32px;height:32px;" @click="findPreviousTerminalResult()" title="上一个结果">
+                  <span class="material-symbols-rounded" style="font-size:18px;">arrow_upward</span>
+                </button>
+                <button class="m3-icon-btn" style="width:32px;height:32px;" @click="findNextTerminalResult()" title="下一个结果">
+                  <span class="material-symbols-rounded" style="font-size:18px;">arrow_downward</span>
+                </button>
+
+                <div style="flex:1"></div>
+                <button class="m3-icon-btn" @click="toggleFullscreen()" :title="isFullscreen ? '退出全屏' : '全屏终端'">
+                  <span class="material-symbols-rounded" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'"></span>
+                </button>
               </div>
 
-              <div class="session-notice" x-show="sessions.some(tab => tab.id === activeSessionId && tab.type !== 'RDP' && !tab.connected && !tab.connecting && !tab.error)" role="status"><span>[!] 会话已断开</span><button class="term-btn-mini" @click="reconnectActiveSession()" :disabled="!isOnline">[ 重新连接 ]</button></div>
+              <!-- Reconnect Notice if Disconnected -->
+              <div class="app-notice" style="background-color:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container);" x-show="sessions.some(tab => tab.id === activeSessionId && tab.type !== 'RDP' && !tab.connected && !tab.connecting && !tab.error)" role="status">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span class="material-symbols-rounded">warning</span>
+                  <span>终端会话已断开</span>
+                </div>
+                <button class="m3-btn m3-btn-filled" style="height:30px;padding:0 12px;font-size:0.8rem;" @click="reconnectActiveSession()" :disabled="!isOnline">
+                  <span class="material-symbols-rounded">refresh</span>
+                  <span>重新连接</span>
+                </button>
+              </div>
 
               <!-- Terminal viewport stage -->
               <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
                 <!-- Floating Exit Fullscreen Button -->
                 <button x-show="isFullscreen" @click="toggleFullscreen()" class="term-fullscreen-exit-btn" title="Exit Fullscreen (ESC)">
-                  [ Exit Fullscreen X ]
+                  <span class="material-symbols-rounded">fullscreen_exit</span>
+                  <span>退出全屏 (ESC)</span>
                 </button>
-                
-                <!-- Terminal Output Buffer Fullscreen Copy View -->
+
+                <!-- Fullscreen Copy Viewer -->
                 <div x-show="terminalCopyViewer.visible" x-effect="syncDialog($el, terminalCopyViewer.visible)" role="dialog" aria-modal="true" aria-label="复制终端输出" class="terminal-copy-viewer" @click.stop>
-                  <div class="terminal-copy-head">
-                    <span class="copy-head-title">=== [ TERMINAL TEXT BUFFER ] ===</span>
-                    <div class="copy-head-actions">
-                      <button class="term-btn-mini" @click="selectAllCopyViewer()">[ Select All ]</button>
-                      <button class="term-btn-mini primary" @click="copyAllFromViewer()">[ Copy ]</button>
-                      <button class="term-btn-mini" @click="closeTerminalCopyViewer()">[ Close X ]</button>
+                  <div class="modal-head">
+                    <span class="modal-title">终端文本缓冲区输出</span>
+                    <div style="display:flex;gap:6px;">
+                      <button class="m3-btn m3-btn-tonal" style="height:34px;" @click="selectAllCopyViewer()">全选</button>
+                      <button class="m3-btn m3-btn-filled primary" style="height:34px;" @click="copyAllFromViewer()">复制</button>
+                      <button class="m3-icon-btn" style="width:34px;height:34px;" @click="closeTerminalCopyViewer()">
+                        <span class="material-symbols-rounded">close</span>
+                      </button>
                     </div>
                   </div>
                   <textarea aria-label="终端输出" readonly x-model="terminalCopyViewer.text" spellcheck="false" class="term-copy-textarea"></textarea>
                 </div>
 
+                <!-- Paste Box Popover -->
                 <div x-show="terminalPasteBox.visible" x-effect="syncDialog($el, terminalPasteBox.visible)" role="dialog" aria-modal="true" aria-label="粘贴命令" class="terminal-paste-popover" @click.stop>
-                  <div class="terminal-paste-head">=== PASTE TEXT TO PTY ===</div>
-                  <textarea aria-label="待粘贴的命令" autocapitalize="none" autocorrect="off" spellcheck="false" x-model="terminalPasteBox.text" placeholder="Type or paste commands here..." class="term-textarea" @keydown.ctrl.enter.prevent="sendTerminalPasteText()" @keydown.meta.enter.prevent="sendTerminalPasteText()"></textarea>
-                  <div class="terminal-paste-actions">
-                    <button class="term-btn" @click="closeTerminalPasteBox()">[ Cancel ]</button>
-                    <button class="term-btn primary" @click="sendTerminalPasteText()">[ Send to PTY ]</button>
+                  <div class="modal-head">
+                    <span class="modal-title">发送文本至终端 (PTY)</span>
+                    <button class="m3-icon-btn" @click="closeTerminalPasteBox()">
+                      <span class="material-symbols-rounded">close</span>
+                    </button>
+                  </div>
+                  <textarea aria-label="待粘贴的命令" autocapitalize="none" autocorrect="off" spellcheck="false" x-model="terminalPasteBox.text" placeholder="在此粘贴或输入要执行的命令..." class="term-textarea" @keydown.ctrl.enter.prevent="sendTerminalPasteText()" @keydown.meta.enter.prevent="sendTerminalPasteText()"></textarea>
+                  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+                    <button class="m3-btn m3-btn-outlined" @click="closeTerminalPasteBox()">取消</button>
+                    <button class="m3-btn m3-btn-filled primary" @click="sendTerminalPasteText()">发送命令</button>
                   </div>
                 </div>
 
+                <!-- Terminals and Connecting Cards -->
                 <template x-for="tab in sessions" :key="tab.id + '-terminal'">
                   <div x-show="activeSessionId === tab.id" class="terminal-wrap">
                     
-                    <!-- Terminal Connecting Stream: Pure Linux SSH output -->
+                    <!-- Material 3 Connecting Progress Card -->
                     <template x-if="tab.connecting || tab.error">
                       <div class="terminal-connecting-screen">
-                        <div class="conn-term-stream">
-                          <div class="conn-line dim">OpenSSH_9.6p1, OpenSSL 3.0.13</div>
-                          <div class="conn-line">
-                            <span class="term-prompt">debug1:</span> Connecting to <strong x-text="(tab.username || 'root') + '@' + (tab.host || 'host') + ':' + (tab.port || 22)"></strong> [<span x-text="tab.host || 'host'"></span>]...
-                          </div>
-
+                        <div class="m3-connecting-card">
+                          
                           <template x-if="tab.connecting">
-                            <div class="conn-stream-body">
-                              <div class="conn-line" x-show="getConnectingStep(tab) >= 1">
-                                <span class="term-prompt">debug1:</span> TCP connection established to <span x-text="(tab.host || '') + ':' + (tab.port || 22)"></span>
+                            <div style="width:100%;display:flex;flex-direction:column;align-items:center;">
+                              <div class="connecting-pulse-icon">
+                                <span class="material-symbols-rounded" x-text="tab.type === 'RDP' ? 'desktop_windows' : 'terminal'"></span>
                               </div>
-                              <div class="conn-line" x-show="getConnectingStep(tab) >= 2">
-                                <span class="term-prompt">debug1:</span> SSH-2.0 handshake & cipher suite agreement.
+                              <h3 style="font-size:1.3rem;font-weight:700;color:var(--md-sys-color-on-surface);margin-bottom:6px;">正在建立连接</h3>
+                              <p style="font-family:var(--font-mono);font-size:0.9rem;color:var(--md-sys-color-primary);" x-text="(tab.username || 'root') + '@' + (tab.host || 'host') + ':' + (tab.port || 22)"></p>
+                              
+                              <div class="m3-progress-linear indeterminate">
+                                <div class="m3-progress-indicator"></div>
                               </div>
-                              <div class="conn-line" x-show="getConnectingStep(tab) >= 3">
-                                <span class="term-prompt">debug1:</span> User authentication & remote PTY allocation.
+                              
+                              <div style="display:flex;align-items:center;gap:8px;font-size:0.88rem;color:var(--md-sys-color-on-surface-variant);margin-bottom:20px;">
+                                <span x-text="getConnectingStatusText(tab)"></span>
+                                <span style="font-family:var(--font-mono);opacity:0.8;" x-text="'[' + getConnectingElapsed(tab) + ']'"></span>
                               </div>
-                              <div class="conn-line active-line">
-                                <span class="conn-spinner-glyph" x-text="currentSpinner"></span>
-                                <span class="conn-progress-label" x-text="getConnectingStatusText(tab)"></span>
-                                <span class="conn-timer-badge" x-text="'[' + getConnectingElapsed(tab) + ']'"></span>
-                              </div>
-                              <div class="conn-actions-line">
-                                <button class="term-btn-mini" @click="closeTab(tab.id)">[ Cancel Connection ]</button>
-                              </div>
+
+                              <button class="m3-btn m3-btn-outlined" @click="closeTab(tab.id)">取消连接</button>
                             </div>
                           </template>
 
                           <template x-if="tab.error">
-                            <div class="conn-stream-error">
-                              <div class="conn-line error-line">
-                                <span class="term-prompt error">ssh: connect to host <span x-text="tab.host || 'host'"></span>:</span>
-                                <span class="error-msg-text" x-text="tab.error"></span>
+                            <div style="width:100%;display:flex;flex-direction:column;align-items:center;">
+                              <div class="connecting-pulse-icon" style="background-color:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container);animation:none;">
+                                <span class="material-symbols-rounded">error</span>
                               </div>
-                              <div class="conn-line dim">
-                                Connection rejected or remote host unreachable. Check network, port and credentials.
-                              </div>
-                              <div class="conn-actions-line">
-                                <button class="term-btn primary" @click="retryConnection(tab)">[ Retry Connection ]</button>
-                                <button class="term-btn" @click="closeTab(tab.id)">[ Close Tab ]</button>
+                              <h3 style="font-size:1.3rem;font-weight:700;color:var(--md-sys-color-on-surface);margin-bottom:6px;">连接失败</h3>
+                              <p style="color:var(--md-sys-color-error);font-weight:600;margin-bottom:8px;" x-text="tab.error"></p>
+                              <p style="font-size:0.85rem;color:var(--md-sys-color-on-surface-variant);margin-bottom:20px;">请检查目标主机地址、端口、网络可达性及授权凭据。</p>
+                              <div style="display:flex;gap:10px;">
+                                <button class="m3-btn m3-btn-filled primary" @click="retryConnection(tab)">重试连接</button>
+                                <button class="m3-btn m3-btn-outlined" @click="closeTab(tab.id)">关闭标签</button>
                               </div>
                             </div>
                           </template>
+
                         </div>
                       </div>
                     </template>
 
+                    <!-- Terminal Output Surface -->
                     <template x-if="!tab.connecting && !tab.error">
                       <div style="width:100%;height:100%;">
                         <template x-if="tab.type === 'RDP'">
@@ -405,13 +630,15 @@
                         </template>
                       </div>
                     </template>
+
                   </div>
                 </template>
               </div>
 
-              <!-- Pinned controls sit outside the horizontal key scroller. -->
+              <!-- IPHONE 17 SAFARI GOOGLE NATIVE APP DOCK & TOOLBAR -->
               <div class="terminal-mobile-dock" x-show="isMobile && activeSessionId">
-                <button type="button" class="dock-tool-button" @click="openMobilePanel('tools')" aria-label="打开终端工具" :aria-expanded="showMobileTools">···</button>
+                
+                <!-- Terminal Accessory Keyboard Bar (Pills above dock) -->
                 <div class="terminal-mobile-bar" x-show="activeSessionType() !== 'RDP'" x-init="setupMobileBar($el)" @click="handleMobileBarClick($event)" role="toolbar" aria-label="终端快捷键">
                   <button type="button" class="mob-btn" data-action="quick" data-key="escape" title="Escape">ESC</button>
                   <button type="button" class="mob-btn" data-action="quick" data-key="tab" title="Tab 补全">TAB</button>
@@ -428,331 +655,568 @@
                   <button type="button" class="mob-btn" data-action="quick" data-payload="~">~</button>
                   <button type="button" class="mob-btn" data-action="quick" data-payload="-">-</button>
                   <button type="button" class="mob-btn" data-action="quick" data-payload="|">|</button>
+                  <button type="button" class="dock-keyboard-button" @click="toggleMobileKeyboard()" :aria-label="isKeyboardOpen ? '收起软键盘' : '打开软键盘'" :aria-pressed="isKeyboardOpen">
+                    <span class="material-symbols-rounded" style="font-size:18px;">keyboard</span>
+                    <span x-text="isKeyboardOpen ? '收起' : '键盘'"></span>
+                  </button>
                 </div>
-                <button type="button" class="dock-keyboard-button" x-show="activeSessionType() !== 'RDP'" @click="toggleMobileKeyboard()" :aria-label="isKeyboardOpen ? '收起软键盘' : '打开软键盘'" :aria-pressed="isKeyboardOpen"><svg aria-hidden="true" viewBox="0 0 24 20" width="24" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="22" height="15" rx="2"/><path d="M4 6h2m2 0h2m2 0h2m2 0h2m2 0h1M4 10h2m2 0h2m2 0h2m2 0h2m2 0h1M7 14h10"/></svg><span x-text="isKeyboardOpen ? '收起' : '键盘'"></span></button>
+
+                <!-- Google Native App Bottom Navigation Bar -->
+                <nav class="m3-dock-nav" aria-label="移动端应用导航">
+                  <button class="m3-dock-item" :class="showMobileMenu ? 'active' : ''" @click="openMobilePanel('hosts')" aria-label="主机列表">
+                    <div class="m3-dock-pill"><span class="material-symbols-rounded">dns</span></div>
+                    <span class="m3-dock-label">主机</span>
+                  </button>
+                  <button class="m3-dock-item" :class="!showMobileMenu && !showMobileSftp && !showMobileStatus && !showMobileTools ? 'active' : ''" @click="openMobilePanel('terminal')" aria-label="终端控制台">
+                    <div class="m3-dock-pill"><span class="material-symbols-rounded">terminal</span></div>
+                    <span class="m3-dock-label">终端</span>
+                  </button>
+                  <button class="m3-dock-item" :class="showMobileSftp ? 'active' : ''" @click="openMobilePanel('files')" aria-label="远程文件">
+                    <div class="m3-dock-pill"><span class="material-symbols-rounded">folder</span></div>
+                    <span class="m3-dock-label">文件</span>
+                  </button>
+                  <button class="m3-dock-item" :class="showMobileStatus ? 'active' : ''" @click="openMobilePanel('status')" aria-label="系统状态">
+                    <div class="m3-dock-pill"><span class="material-symbols-rounded">monitoring</span></div>
+                    <span class="m3-dock-label">状态</span>
+                  </button>
+                  <button class="m3-dock-item" :class="showMobileTools ? 'active' : ''" @click="openMobilePanel('tools')" aria-label="工具与外观">
+                    <div class="m3-dock-pill"><span class="material-symbols-rounded">tune</span></div>
+                    <span class="m3-dock-label">工具</span>
+                  </button>
+                </nav>
+
               </div>
             </section>
-            <!-- RIGHT PANEL: SFTP & Server Status -->
+
+            <!-- RIGHT PANEL: SFTP & Server Telemetry (Desktop) -->
             <aside class="side-panel" x-show="!isMobile ? (showSftpWidget || showStatusWidget) : false">
               <div class="side-tabs">
-                <button class="term-btn" :class="rightTab === 'files' ? 'active' : ''" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false">[ FILES ]</button>
-                <button class="term-btn" :class="rightTab === 'status' ? 'active' : ''" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false">[ STATS ]</button>
+                <button class="m3-btn" :class="rightTab === 'files' ? 'm3-btn-filled primary' : 'm3-btn-tonal'" @click="rightTab = 'files'; showSftpWidget = true; showStatusWidget = false">
+                  <span class="material-symbols-rounded" style="font-size:18px;">folder</span>
+                  <span>文件管理</span>
+                </button>
+                <button class="m3-btn" :class="rightTab === 'status' ? 'm3-btn-filled primary' : 'm3-btn-tonal'" @click="rightTab = 'status'; showStatusWidget = true; showSftpWidget = false">
+                  <span class="material-symbols-rounded" style="font-size:18px;">monitoring</span>
+                  <span>遥测状态</span>
+                </button>
                 <div style="flex:1"></div>
-                <button class="term-btn-mini" @click="toggleUtilityPanel()" title="Collapse Panel">[ &gt;&gt; ]</button>
+                <button class="m3-icon-btn" @click="toggleUtilityPanel()" title="收起侧栏">
+                  <span class="material-symbols-rounded">chevron_right</span>
+                </button>
               </div>
 
-              <!-- SFTP File Explorer -->
+              <!-- SFTP File Explorer (Desktop) -->
               <div class="side-panel-body" x-show="rightTab === 'files'">
                 <div class="path-bar-container" @click.away="showPathDropdown = false">
                   <div class="path-input-wrapper">
-                    <span class="term-prompt">pwd:</span>
+                    <span class="material-symbols-rounded" style="font-size:18px;color:var(--md-sys-color-primary);flex-shrink:0;">folder_open</span>
                     <input type="text" x-model="pathInput" @focus="showPathDropdown = true; activeSuggestionIndex = -1" @keydown.down.prevent="navigateSuggestions(1)" @keydown.up.prevent="navigateSuggestions(-1)" @keydown.enter.prevent="selectSuggestionOrSubmit()" @keydown.escape="showPathDropdown = false" class="term-input" placeholder="/path/to/remote...">
-                    <button @click="submitPath()" class="term-btn-mini">[ Go ]</button>
+                    <button @click="submitPath()" class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.85rem;flex-shrink:0;">前往</button>
                   </div>
                 </div>
 
                 <div class="file-actions">
-                  <button class="term-btn" @click="goParentDir()" title="Parent Directory">[ .. UP ]</button>
-                  <button class="term-btn" @click="refreshFiles()" title="Refresh">[ Refresh ]</button>
-                  <button class="term-btn" @click="promptMkdir()" title="Create Directory">[ +DIR ]</button>
-                  <button class="term-btn" @click="promptWriteFile()" title="Create File">[ +FILE ]</button>
-                  <button class="term-btn" @click="pasteClipboard()" title="Paste">[ Paste ]</button>
-                  <button class="term-btn" @click="triggerUpload()" title="Upload">[ Upload ]</button>
+                  <button class="m3-btn m3-btn-tonal file-act-btn" @click="goParentDir()" title="返回上一层目录">
+                    <span class="material-symbols-rounded">arrow_upward</span>
+                    <span>上一层</span>
+                  </button>
+                  <button class="m3-btn m3-btn-tonal file-act-btn" @click="refreshFiles()" title="刷新文件列表">
+                    <span class="material-symbols-rounded">refresh</span>
+                    <span>刷新</span>
+                  </button>
+                  <button class="m3-btn m3-btn-tonal file-act-btn" @click="promptMkdir()" title="新建目录">
+                    <span class="material-symbols-rounded">create_new_folder</span>
+                    <span>新建目录</span>
+                  </button>
+                  <button class="m3-btn m3-btn-tonal file-act-btn" @click="promptWriteFile()" title="新建文件">
+                    <span class="material-symbols-rounded">note_add</span>
+                    <span>新建文件</span>
+                  </button>
+                  <button class="m3-btn m3-btn-tonal file-act-btn" @click="pasteClipboard()" title="粘贴文件">
+                    <span class="material-symbols-rounded">content_paste</span>
+                    <span>粘贴</span>
+                  </button>
+                  <button class="m3-btn m3-btn-filled primary file-act-btn" @click="triggerUpload()" title="上传本地文件">
+                    <span class="material-symbols-rounded">upload</span>
+                    <span>上传文件</span>
+                  </button>
                   <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
                 </div>
 
                 <div class="file-list">
                   <template x-if="!activeSessionId">
-                    <div class="empty-term">-- Connect SSH session to view remote filesystem --</div>
+                    <div class="m3-empty-state">
+                      <span class="material-symbols-rounded">cloud_off</span>
+                      <p>请先连接 SSH 会话以访问远程文件系统</p>
+                    </div>
                   </template>
                   <template x-for="entry in files" :key="entry.filename">
                     <div class="file-item" @contextmenu="showContextMenu($event, entry)" :title="entry.filename + (entry.isDir ? '/' : '')">
-                      <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)" :title="entry.filename + (entry.isDir ? '/' : '')">
+                      <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)">
                         <span :class="getFileIconClass(entry)" x-text="getFileIcon(entry)"></span>
                         <span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span>
+                      </button>
+                      <button class="m3-icon-btn" style="width:32px;height:32px;" @click.stop="showContextMenu($event, entry)">
+                        <span class="material-symbols-rounded" style="font-size:18px;">more_vert</span>
                       </button>
                     </div>
                   </template>
                 </div>
               </div>
 
-              <!-- Server Status Monitor -->
+              <!-- Server Telemetry (Desktop) -->
               <div class="side-panel-body" x-show="rightTab === 'status'">
-                <div class="status-box">
+                <div class="m3-stats-grid">
                   <template x-if="activeStatus">
-                    <div class="status-terminal-list">
-                      <div class="status-term-row"><span class="st-label">OS:</span><strong class="st-val" x-text="activeStatus.osName || '-'"></strong></div>
-                      <div class="status-term-row"><span class="st-label">IP:</span><strong class="st-val" x-text="activeStatus.serverIp || '-'"></strong></div>
-                      
-                      <div class="meter-block">
-                        <div class="meter-head"><span>CPU USAGE:</span> <strong x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></strong></div>
-                        <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.cpuPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.cpuPercent || 0)/10)))) + ']'"></div>
+                    <div>
+                      <div class="m3-metric-card" style="margin-bottom:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.85rem;color:var(--md-sys-color-on-surface-variant);margin-bottom:6px;">
+                          <span>系统内核</span>
+                          <strong style="color:var(--md-sys-color-on-surface);" x-text="activeStatus.osName || '-'"></strong>
+                        </div>
+                        <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.85rem;color:var(--md-sys-color-on-surface-variant);">
+                          <span>主机 IP</span>
+                          <strong style="font-family:var(--font-mono);color:var(--md-sys-color-primary);" x-text="activeStatus.serverIp || '-'"></strong>
+                        </div>
                       </div>
 
-                      <div class="meter-block">
-                        <div class="meter-head"><span>MEM USAGE:</span> <strong x-text="Math.round(activeStatus.memPercent || 0) + '%'"></strong></div>
-                        <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.memPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.memPercent || 0)/10)))) + ']'"></div>
+                      <div class="m3-metric-card">
+                        <div class="metric-header">
+                          <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="material-symbols-rounded" style="font-size:18px;color:var(--md-sys-color-primary);">memory</span>
+                            <span>CPU 负载</span>
+                          </div>
+                          <span class="metric-val" x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></span>
+                        </div>
+                        <div class="m3-progress-linear">
+                          <div class="m3-progress-indicator" :style="'width: ' + Math.min(100, Math.round(activeStatus.cpuPercent || 0)) + '%'"></div>
+                        </div>
                       </div>
 
-                      <div class="meter-block">
-                        <div class="meter-head"><span>DISK USAGE:</span> <strong x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></strong></div>
-                        <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.diskPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.diskPercent || 0)/10)))) + ']'"></div>
+                      <div class="m3-metric-card">
+                        <div class="metric-header">
+                          <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="material-symbols-rounded" style="font-size:18px;color:var(--md-sys-color-secondary);">storage</span>
+                            <span>内存使用率</span>
+                          </div>
+                          <span class="metric-val" x-text="Math.round(activeStatus.memPercent || 0) + '%'"></span>
+                        </div>
+                        <div class="m3-progress-linear">
+                          <div class="m3-progress-indicator" style="background-color:var(--md-sys-color-secondary);" :style="'width: ' + Math.min(100, Math.round(activeStatus.memPercent || 0)) + '%'"></div>
+                        </div>
                       </div>
 
-                      <div class="status-term-row"><span class="st-label">RX (DOWN):</span><strong class="st-val" x-text="bytes(activeStatus.netRxRate)"></strong></div>
-                      <div class="status-term-row"><span class="st-label">TX (UP):</span><strong class="st-val" x-text="bytes(activeStatus.netTxRate)"></strong></div>
+                      <div class="m3-metric-card">
+                        <div class="metric-header">
+                          <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="material-symbols-rounded" style="font-size:18px;color:var(--md-sys-color-tertiary);">hard_drive</span>
+                            <span>磁盘使用率</span>
+                          </div>
+                          <span class="metric-val" x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></span>
+                        </div>
+                        <div class="m3-progress-linear">
+                          <div class="m3-progress-indicator" style="background-color:var(--md-sys-color-tertiary);" :style="'width: ' + Math.min(100, Math.round(activeStatus.diskPercent || 0)) + '%'"></div>
+                        </div>
+                      </div>
+
+                      <div class="net-rate-row">
+                        <div class="net-chip">
+                          <span class="material-symbols-rounded" style="color:#34a853;">arrow_downward</span>
+                          <div style="display:flex;flex-direction:column;">
+                            <span style="font-size:0.75rem;color:var(--md-sys-color-on-surface-variant);">下行速率</span>
+                            <strong style="font-family:var(--font-mono);font-size:0.9rem;" x-text="bytes(activeStatus.netRxRate)"></strong>
+                          </div>
+                        </div>
+                        <div class="net-chip">
+                          <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">arrow_upward</span>
+                          <div style="display:flex;flex-direction:column;">
+                            <span style="font-size:0.75rem;color:var(--md-sys-color-on-surface-variant);">上行速率</span>
+                            <strong style="font-family:var(--font-mono);font-size:0.9rem;" x-text="bytes(activeStatus.netTxRate)"></strong>
+                          </div>
+                        </div>
+                      </div>
+
                     </div>
                   </template>
+
                   <template x-if="!activeStatus">
-                    <div class="empty-term">-- System telemetry waiting for session active --</div>
+                    <div class="m3-empty-state">
+                      <span class="material-symbols-rounded">query_stats</span>
+                      <p>等待建立活跃 SSH 连接以接收系统遥测数据...</p>
+                    </div>
                   </template>
                 </div>
               </div>
 
-              <!-- Bottom collapse button moved downward -->
-              <div class="side-panel-bottom">
-                <button class="term-btn" @click="toggleUtilityPanel()">[ &gt;&gt; Collapse ]</button>
+              <!-- Bottom collapse button -->
+              <div class="connection-panel-bottom">
+                <button class="m3-btn m3-btn-tonal" style="width:100%;" @click="toggleUtilityPanel()">
+                  <span class="material-symbols-rounded">chevron_right</span>
+                  <span>收起侧栏</span>
+                </button>
               </div>
             </aside>
           </div>
         </template>
 
+        <!-- 3. MOBILE BOTTOM SHEETS (IPHONE 17 SAFARI GOOGLE NATIVE APP MODALS) -->
+
+        <!-- Mobile Tools Bottom Sheet -->
         <div class="modal-backdrop mobile-modal-backdrop" x-show="showMobileTools" @click.self="showMobileTools = false" x-effect="syncDialog($el, showMobileTools)" role="dialog" aria-modal="true" aria-label="终端工具">
-          <section class="mobile-term-modal tools-sheet">
-            <div class="modal-head"><span class="modal-title">=== [ TOOLS ] ===</span><button class="term-btn-mini" @click="showMobileTools = false">[ Close X ]</button></div>
-            <div class="tool-grid">
-              <button class="term-btn" @click="openMobilePanel('hosts')">[ 主机目录 ]</button>
-              <button class="term-btn" @click="showMobileTools = false; toggleFullscreen()" x-text="isFullscreen ? '[ 退出全屏 ]' : '[ 全屏终端 ]'"></button>
-              <button class="term-btn" x-show="activeSessionType() !== 'RDP'" @click="showMobileTools = false; openTerminalCopyViewer()">[ 复制输出 ]</button>
-              <button class="term-btn" x-show="activeSessionType() !== 'RDP'" @click="showMobileTools = false; openTerminalPasteBox()">[ 粘贴命令 ]</button>
-              <button class="term-btn" x-show="activeSessionType() !== 'RDP'" @click="openMobilePanel('files')">[ 远程文件 ]</button>
-              <button class="term-btn" x-show="activeSessionType() !== 'RDP'" @click="openMobilePanel('status')">[ 系统状态 ]</button>
+          <section class="m3-dialog mobile-term-modal">
+            <div class="m3-drag-handle"></div>
+            <div class="modal-head">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">tune</span>
+                <span class="modal-title">快捷工具与外观</span>
+              </div>
+              <button class="m3-icon-btn" @click="showMobileTools = false" aria-label="关闭">
+                <span class="material-symbols-rounded">close</span>
+              </button>
             </div>
-            <p class="tools-hint">// 快捷栏可左右横滑 · 支持 CTRL 组合键与剪贴板一键粘贴</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <button class="m3-btn m3-btn-tonal" @click="openMobilePanel('hosts')">
+                <span class="material-symbols-rounded">dns</span>
+                <span>主机列表</span>
+              </button>
+              <button class="m3-btn m3-btn-tonal" @click="showMobileTools = false; toggleFullscreen()">
+                <span class="material-symbols-rounded" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'"></span>
+                <span x-text="isFullscreen ? '退出全屏' : '全屏终端'"></span>
+              </button>
+              <button class="m3-btn m3-btn-tonal" x-show="activeSessionType() !== 'RDP'" @click="showMobileTools = false; openTerminalCopyViewer()">
+                <span class="material-symbols-rounded">content_copy</span>
+                <span>复制输出</span>
+              </button>
+              <button class="m3-btn m3-btn-tonal" x-show="activeSessionType() !== 'RDP'" @click="showMobileTools = false; openTerminalPasteBox()">
+                <span class="material-symbols-rounded">content_paste</span>
+                <span>粘贴命令</span>
+              </button>
+              <button class="m3-btn m3-btn-tonal" @click="showThemePicker = true; showMobileTools = false">
+                <span class="material-symbols-rounded">palette</span>
+                <span>主题与配色</span>
+              </button>
+              <button class="m3-btn m3-btn-tonal" @click="toggleColorMode()">
+                <span class="material-symbols-rounded" x-text="colorMode === 'dark' ? 'light_mode' : 'dark_mode'"></span>
+                <span x-text="colorMode === 'dark' ? '白天模式' : '黑夜模式'"></span>
+              </button>
+            </div>
+            <div style="margin-top:16px;padding:12px;border-radius:var(--m3-shape-lg);background-color:var(--md-sys-color-surface-container-high);font-size:0.82rem;color:var(--md-sys-color-on-surface-variant);display:flex;align-items:center;gap:8px;">
+              <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">info</span>
+              <span>长按快捷栏可横滑，支持 CTRL 组合键与剪贴板一键粘贴。</span>
+            </div>
           </section>
         </div>
 
-        <!-- Mobile SFTP Modal Dialog -->
+        <!-- Mobile SFTP Bottom Sheet -->
         <div x-show="showMobileSftp" x-effect="syncDialog($el, showMobileSftp)" role="dialog" aria-modal="true" aria-label="远程文件" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileSftp = false">
-          <div class="mobile-term-modal">
+          <section class="m3-dialog mobile-term-modal">
+            <div class="m3-drag-handle"></div>
             <div class="modal-head">
-              <span class="modal-title">=== [ REMOTE SFTP FILES ] ===</span>
-              <button @click="showMobileSftp = false" class="term-btn-mini">[ Close X ]</button>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">folder</span>
+                <span class="modal-title">远程文件 (SFTP)</span>
+              </div>
+              <button @click="showMobileSftp = false" class="m3-icon-btn" aria-label="关闭">
+                <span class="material-symbols-rounded">close</span>
+              </button>
             </div>
             
-            <div class="mobile-modal-content">
-              <div class="path-bar-container" @click.away="showPathDropdown = false">
-                <div class="path-input-wrapper">
-                  <span class="term-prompt">pwd:</span>
-                  <input type="text" x-model="pathInput" @focus="showPathDropdown = true; activeSuggestionIndex = -1" @keydown.enter.prevent="selectSuggestionOrSubmit()" class="term-input" placeholder="/path/to/remote...">
-                  <button @click="submitPath()" class="term-btn-mini">[ Go ]</button>
+            <div class="path-bar-container" @click.away="showPathDropdown = false">
+              <div class="path-input-wrapper">
+                <span class="material-symbols-rounded" style="font-size:18px;color:var(--md-sys-color-primary);flex-shrink:0;">folder_open</span>
+                <input type="text" x-model="pathInput" @focus="showPathDropdown = true; activeSuggestionIndex = -1" @keydown.enter.prevent="selectSuggestionOrSubmit()" class="term-input" placeholder="/path/to/remote...">
+                <button @click="submitPath()" class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.85rem;flex-shrink:0;">前往</button>
+              </div>
+            </div>
+
+            <div class="file-actions">
+              <button class="m3-btn m3-btn-tonal file-act-btn" @click="goParentDir()" title="返回上一层目录"><span class="material-symbols-rounded">arrow_upward</span><span>上一层</span></button>
+              <button class="m3-btn m3-btn-tonal file-act-btn" @click="refreshFiles()" title="刷新文件列表"><span class="material-symbols-rounded">refresh</span><span>刷新</span></button>
+              <button class="m3-btn m3-btn-tonal file-act-btn" @click="promptMkdir()" title="新建目录"><span class="material-symbols-rounded">create_new_folder</span><span>新建目录</span></button>
+              <button class="m3-btn m3-btn-tonal file-act-btn" @click="promptWriteFile()" title="新建文件"><span class="material-symbols-rounded">note_add</span><span>新建文件</span></button>
+              <button class="m3-btn m3-btn-filled primary file-act-btn" @click="triggerUpload()" title="上传本地文件"><span class="material-symbols-rounded">upload</span><span>上传文件</span></button>
+            </div>
+
+            <div class="file-list" style="max-height:45vh;">
+              <template x-if="!activeSessionId">
+                <div class="m3-empty-state">
+                  <span class="material-symbols-rounded">cloud_off</span>
+                  <p>连接 SSH 会话后即可浏览文件</p>
                 </div>
-              </div>
-
-              <div class="file-actions">
-                <button class="term-btn" @click="goParentDir()" title="Parent Directory">[ .. UP ]</button>
-                <button class="term-btn" @click="refreshFiles()" title="Refresh">[ Refresh ]</button>
-                <button class="term-btn" @click="promptMkdir()" title="Create Directory">[ +DIR ]</button>
-                <button class="term-btn" @click="promptWriteFile()" title="Create File">[ +FILE ]</button>
-                <button class="term-btn" @click="pasteClipboard()" title="Paste">[ Paste ]</button>
-                <button class="term-btn" @click="triggerUpload()" title="Upload">[ Upload ]</button>
-              </div>
-
-              <div class="file-list mobile-file-list">
-                <template x-if="!activeSessionId">
-                  <div class="empty-term">-- Connect SSH session to view files --</div>
-                </template>
-                <template x-for="entry in files" :key="entry.filename">
-                  <div class="file-item mobile-file-row" @contextmenu="showContextMenu($event, entry)" :title="entry.filename + (entry.isDir ? '/' : '')">
-                    <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : (readFile(entry.filename), showMobileSftp = false)">
-                      <span :class="getFileIconClass(entry)" x-text="getFileIcon(entry)"></span>
-                      <span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span>
-                    </button>
-                    <button class="term-btn-mini" @click.stop="showContextMenu($event, entry)" :aria-label="'文件操作 ' + entry.filename">···</button>
-                  </div>
-                </template>
-              </div>
+              </template>
+              <template x-for="entry in files" :key="entry.filename">
+                <div class="file-item" @contextmenu="showContextMenu($event, entry)" :title="entry.filename + (entry.isDir ? '/' : '')">
+                  <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : (readFile(entry.filename), showMobileSftp = false)">
+                    <span :class="getFileIconClass(entry)" x-text="getFileIcon(entry)"></span>
+                    <span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span>
+                  </button>
+                  <button class="m3-icon-btn" style="width:36px;height:36px;" @click.stop="showContextMenu($event, entry)" :aria-label="'操作 ' + entry.filename">
+                    <span class="material-symbols-rounded">more_vert</span>
+                  </button>
+                </div>
+              </template>
             </div>
-          </div>
+          </section>
         </div>
 
-        <!-- Mobile System Stats Modal Dialog -->
+        <!-- Mobile System Stats Bottom Sheet -->
         <div x-show="showMobileStatus" x-effect="syncDialog($el, showMobileStatus)" role="dialog" aria-modal="true" aria-label="系统状态" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileStatus = false">
-          <div class="mobile-term-modal">
+          <section class="m3-dialog mobile-term-modal">
+            <div class="m3-drag-handle"></div>
             <div class="modal-head">
-              <span class="modal-title">=== [ SYSTEM TELEMETRY ] ===</span>
-              <button @click="showMobileStatus = false" class="term-btn-mini">[ Close X ]</button>
-            </div>
-            <div class="mobile-modal-content">
-              <div class="status-box">
-                <template x-if="activeStatus">
-                  <div class="status-terminal-list">
-                    <div class="status-term-row"><span class="st-label">OS:</span><strong class="st-val" x-text="activeStatus.osName || '-'"></strong></div>
-                    <div class="status-term-row"><span class="st-label">IP:</span><strong class="st-val" x-text="activeStatus.serverIp || '-'"></strong></div>
-                    
-                    <div class="meter-block">
-                      <div class="meter-head"><span>CPU USAGE:</span> <strong x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></strong></div>
-                      <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.cpuPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.cpuPercent || 0)/10)))) + ']'"></div>
-                    </div>
-
-                    <div class="meter-block">
-                      <div class="meter-head"><span>MEM USAGE:</span> <strong x-text="Math.round(activeStatus.memPercent || 0) + '%'"></strong></div>
-                      <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.memPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.memPercent || 0)/10)))) + ']'"></div>
-                    </div>
-
-                    <div class="meter-block">
-                      <div class="meter-head"><span>DISK USAGE:</span> <strong x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></strong></div>
-                      <div class="ascii-bar" x-text="'[' + '█'.repeat(Math.min(10, Math.round((activeStatus.diskPercent || 0)/10))) + '░'.repeat(Math.max(0, 10 - Math.min(10, Math.round((activeStatus.diskPercent || 0)/10)))) + ']'"></div>
-                    </div>
-
-                    <div class="status-term-row"><span class="st-label">RX (DOWN):</span><strong class="st-val" x-text="bytes(activeStatus.netRxRate)"></strong></div>
-                    <div class="status-term-row"><span class="st-label">TX (UP):</span><strong class="st-val" x-text="bytes(activeStatus.netTxRate)"></strong></div>
-                  </div>
-                </template>
-                <template x-if="!activeStatus">
-                  <div class="empty-term">-- System telemetry waiting for session active --</div>
-                </template>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">monitoring</span>
+                <span class="modal-title">系统遥测监控</span>
               </div>
+              <button @click="showMobileStatus = false" class="m3-icon-btn" aria-label="关闭">
+                <span class="material-symbols-rounded">close</span>
+              </button>
             </div>
-          </div>
+
+            <div class="m3-stats-grid" style="max-height:60vh;overflow-y:auto;">
+              <template x-if="activeStatus">
+                <div>
+                  <div class="m3-metric-card" style="margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.85rem;color:var(--md-sys-color-on-surface-variant);margin-bottom:6px;">
+                      <span>操作系统</span>
+                      <strong style="color:var(--md-sys-color-on-surface);" x-text="activeStatus.osName || '-'"></strong>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.85rem;color:var(--md-sys-color-on-surface-variant);">
+                      <span>服务器 IP</span>
+                      <strong style="font-family:var(--font-mono);color:var(--md-sys-color-primary);" x-text="activeStatus.serverIp || '-'"></strong>
+                    </div>
+                  </div>
+
+                  <div class="m3-metric-card">
+                    <div class="metric-header">
+                      <div style="display:flex;align-items:center;gap:6px;">
+                        <span class="material-symbols-rounded" style="font-size:18px;color:var(--md-sys-color-primary);">memory</span>
+                        <span>CPU 负载</span>
+                      </div>
+                      <span class="metric-val" x-text="Math.round(activeStatus.cpuPercent || 0) + '%'"></span>
+                    </div>
+                    <div class="m3-progress-linear">
+                      <div class="m3-progress-indicator" :style="'width: ' + Math.min(100, Math.round(activeStatus.cpuPercent || 0)) + '%'"></div>
+                    </div>
+                  </div>
+
+                  <div class="m3-metric-card">
+                    <div class="metric-header">
+                      <div style="display:flex;align-items:center;gap:6px;">
+                        <span class="material-symbols-rounded" style="font-size:18px;color:var(--md-sys-color-secondary);">storage</span>
+                        <span>内存使用率</span>
+                      </div>
+                      <span class="metric-val" x-text="Math.round(activeStatus.memPercent || 0) + '%'"></span>
+                    </div>
+                    <div class="m3-progress-linear">
+                      <div class="m3-progress-indicator" style="background-color:var(--md-sys-color-secondary);" :style="'width: ' + Math.min(100, Math.round(activeStatus.memPercent || 0)) + '%'"></div>
+                    </div>
+                  </div>
+
+                  <div class="m3-metric-card">
+                    <div class="metric-header">
+                      <div style="display:flex;align-items:center;gap:6px;">
+                        <span class="material-symbols-rounded" style="font-size:18px;color:var(--md-sys-color-tertiary);">hard_drive</span>
+                        <span>磁盘使用率</span>
+                      </div>
+                      <span class="metric-val" x-text="Math.round(activeStatus.diskPercent || 0) + '%'"></span>
+                    </div>
+                    <div class="m3-progress-linear">
+                      <div class="m3-progress-indicator" style="background-color:var(--md-sys-color-tertiary);" :style="'width: ' + Math.min(100, Math.round(activeStatus.diskPercent || 0)) + '%'"></div>
+                    </div>
+                  </div>
+
+                  <div class="net-rate-row">
+                    <div class="net-chip">
+                      <span class="material-symbols-rounded" style="color:#34a853;">arrow_downward</span>
+                      <div style="display:flex;flex-direction:column;">
+                        <span style="font-size:0.75rem;color:var(--md-sys-color-on-surface-variant);">下行速率</span>
+                        <strong style="font-family:var(--font-mono);font-size:0.9rem;" x-text="bytes(activeStatus.netRxRate)"></strong>
+                      </div>
+                    </div>
+                    <div class="net-chip">
+                      <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">arrow_upward</span>
+                      <div style="display:flex;flex-direction:column;">
+                        <span style="font-size:0.75rem;color:var(--md-sys-color-on-surface-variant);">上行速率</span>
+                        <strong style="font-family:var(--font-mono);font-size:0.9rem;" x-text="bytes(activeStatus.netTxRate)"></strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="!activeStatus">
+                <div class="m3-empty-state">
+                  <span class="material-symbols-rounded">query_stats</span>
+                  <p>请保持 SSH 连接以查看系统状态遥测数据</p>
+                </div>
+              </template>
+            </div>
+          </section>
         </div>
 
-        <!-- Connection Manager Modal -->
+        <!-- 4. CONNECTION MANAGER & HOST CONFIG MODAL -->
         <div x-show="showConnectionManager" x-effect="syncDialog($el, showConnectionManager)" role="dialog" aria-modal="true" aria-label="主机管理" class="modal-backdrop" @click.self="closeConnectionManager()">
-          <section class="connection-modal">
+          <section class="m3-dialog connection-modal" style="max-width:680px;">
             <div class="modal-head">
-              <span class="modal-title" x-text="showConnectionForm ? (connectionForm.id ? '=== [ EDIT CONNECTION ] ===' : '=== [ NEW CONNECTION ] ===') : '=== [ CONNECTION DIRECTORY ] ==='"></span>
-              <button @click="showConnectionForm ? cancelConnectionForm() : closeConnectionManager()" class="term-btn-mini">
-                <span x-text="showConnectionForm && connectionFormSource === 'manager' ? '[ &lt; Back ]' : '[ Close X ]'"></span>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <button x-show="showConnectionForm && connectionFormSource === 'directory'" @click="cancelConnectionForm()" class="m3-icon-btn" style="width:32px;height:32px;margin-right:-2px;" title="返回已保存主机列表" aria-label="返回已保存主机列表">
+                  <span class="material-symbols-rounded" style="font-size:20px;">arrow_back</span>
+                </button>
+                <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">dns</span>
+                <span class="modal-title" x-text="showConnectionForm ? (connectionForm.id ? '编辑主机配置' : '新建远程主机') : '已保存主机列表'"></span>
+              </div>
+              <button @click="closeConnectionManager()" class="m3-icon-btn" aria-label="关闭弹窗" title="关闭">
+                <span class="material-symbols-rounded">close</span>
               </button>
             </div>
 
             <div class="connection-layout">
               <!-- Saved connections list -->
               <div class="manager-connection-list" x-show="!showConnectionForm">
-                <div class="list-head">
-                  <span>SAVED HOST RECORDS:</span>
-                  <button @click="newConnection('SSH', 'manager')" class="term-btn primary">[ + New Host ]</button>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                  <span style="font-size:0.9rem;font-weight:600;color:var(--md-sys-color-on-surface-variant);">配置记录清单：</span>
+                  <button @click="newConnection('SSH', 'directory')" class="m3-btn m3-btn-filled primary" style="height:36px;padding:0 16px;">
+                    <span class="material-symbols-rounded">add</span>
+                    <span>新建主机</span>
+                  </button>
                 </div>
-                <div class="manager-cards-scroll">
-                  <div class="manager-table-head">
-                    <span class="m-idx">#</span>
-                    <span class="m-type">TYPE</span>
-                    <span class="m-name">NAME</span>
-                    <span class="m-dest">TARGET HOST</span>
-                    <span class="m-act"></span>
-                  </div>
+                <div style="max-height:50vh;overflow-y:auto;">
                   <template x-for="(connection, idx) in connections" :key="connection.id">
                     <div class="manager-connection-row">
-                      <span class="m-idx" x-text="'[' + (idx + 1) + ']'"></span>
-                      <span class="m-type"><span class="term-badge" x-text="connection.type || 'SSH'"></span></span>
-                      <span class="m-name"><strong x-text="connection.name"></strong></span>
-                      <span class="m-dest" x-text="connection.username + '@' + connection.host + ':' + connection.port"></span>
-                      <span class="m-act">
-                        <button class="term-btn primary" @click="openSession(connection); closeConnectionManager()">[ Connect ]</button>
-                        <button class="term-btn" @click="testSavedConnection(connection.id)">[ Test ]</button>
-                        <button class="term-btn" @click="editConnection(connection)">[ Edit ]</button>
-                        <button class="term-btn danger" @click="deleteConnection(connection.id)">[ Del ]</button>
-                      </span>
+                      <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+                        <span class="host-badge-chip" x-text="connection.type || 'SSH'"></span>
+                        <div style="display:flex;flex-direction:column;min-width:0;">
+                          <strong style="font-size:0.95rem;color:var(--md-sys-color-on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" x-text="connection.name"></strong>
+                          <span class="m-dest" x-text="connection.username + '@' + connection.host + ':' + connection.port"></span>
+                        </div>
+                      </div>
+                      <div class="m-act">
+                        <button class="m3-btn m3-btn-filled primary" style="height:32px;padding:0 12px;font-size:0.8rem;" @click="openSession(connection); closeConnectionManager()">连接</button>
+                        <button class="m3-icon-btn" style="width:32px;height:32px;" @click="testSavedConnection(connection.id)" title="测试连通性">
+                          <span class="material-symbols-rounded" style="font-size:16px;">speed</span>
+                        </button>
+                        <button class="m3-icon-btn" style="width:32px;height:32px;" @click="editConnection(connection, 'directory')" title="编辑配置">
+                          <span class="material-symbols-rounded" style="font-size:16px;">edit</span>
+                        </button>
+                        <button class="m3-icon-btn" style="width:32px;height:32px;color:var(--md-sys-color-error);" @click="deleteConnection(connection.id)" title="删除记录">
+                          <span class="material-symbols-rounded" style="font-size:16px;">delete</span>
+                        </button>
+                      </div>
                     </div>
                   </template>
-                  <div class="empty-term" x-show="!connections.length">-- No saved connections --</div>
+                  <div class="m3-empty-state" x-show="!connections.length">
+                    <span class="material-symbols-rounded">cloud_off</span>
+                    <p>暂无任何保存的主机记录</p>
+                  </div>
                 </div>
               </div>
 
               <!-- Connection configuration form -->
               <form x-show="showConnectionForm" @submit.prevent="saveConnection()" class="connection-form">
-                <div class="form-row-inline">
-                  <span class="form-key">Name:</span>
-                  <input aria-label="Name" x-model="connectionForm.name" autocomplete="off" placeholder="Production Server" class="term-input" required>
+                <div class="m3-field-wrap">
+                  <label class="m3-field-label" for="conn-name">主机别名 / 名称</label>
+                  <input id="conn-name" aria-label="Name" x-model="connectionForm.name" autocomplete="off" placeholder="例如: 生产服务器 / Production Server" class="m3-input" required>
                 </div>
-                <div class="form-row-inline">
-                  <span class="form-key">Protocol:</span>
-                  <select aria-label="Protocol" x-model="connectionForm.type" @change="normalizeConnectionForm()" class="term-select">
-                    <option value="SSH">SSH Terminal</option>
-                    <option value="RDP">RDP Remote Desktop</option>
+                <div class="m3-field-wrap">
+                  <label class="m3-field-label" for="conn-type">连接协议</label>
+                  <select id="conn-type" aria-label="Protocol" x-model="connectionForm.type" @change="normalizeConnectionForm()" class="m3-input term-select">
+                    <option value="SSH">SSH 终端 (Secure Shell)</option>
+                    <option value="RDP">RDP 远程桌面 (Remote Desktop)</option>
                   </select>
                 </div>
-                <div class="form-row-inline">
-                  <span class="form-key">Host:</span>
-                  <input aria-label="Host" x-model="connectionForm.host" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="192.168.1.100" class="term-input" required>
+                <div style="display:grid;grid-template-columns:3fr 1fr;gap:12px;">
+                  <div class="m3-field-wrap">
+                    <label class="m3-field-label" for="conn-host">主机地址 / IP</label>
+                    <input id="conn-host" aria-label="Host" x-model="connectionForm.host" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="192.168.1.100 或 example.com" class="m3-input" required>
+                  </div>
+                  <div class="m3-field-wrap">
+                    <label class="m3-field-label" for="conn-port">端口</label>
+                    <input id="conn-port" aria-label="Port" x-model.number="connectionForm.port" type="number" inputmode="numeric" min="1" max="65535" autocomplete="off" placeholder="22" class="m3-input" required>
+                  </div>
                 </div>
-                <div class="form-row-inline">
-                  <span class="form-key">Port:</span>
-                  <input aria-label="Port" x-model.number="connectionForm.port" type="number" inputmode="numeric" min="1" max="65535" autocomplete="off" placeholder="22" class="term-input" required>
+                <div class="m3-field-wrap">
+                  <label class="m3-field-label" for="conn-user">用户名</label>
+                  <input id="conn-user" aria-label="Username" x-model="connectionForm.username" autocomplete="username" placeholder="root" class="m3-input" required>
                 </div>
-                <div class="form-row-inline">
-                  <span class="form-key">Username:</span>
-                  <input aria-label="Username" x-model="connectionForm.username" autocomplete="username" placeholder="root" class="term-input" required>
-                </div>
-                <div class="form-row-inline" x-show="connectionForm.type !== 'RDP'">
-                  <span class="form-key">Auth Method:</span>
-                  <select aria-label="Auth Method" x-model="connectionForm.auth_method" class="term-select">
-                    <option value="password">Password</option>
-                    <option value="key">Private Key</option>
+                <div class="m3-field-wrap" x-show="connectionForm.type !== 'RDP'">
+                  <label class="m3-field-label" for="conn-auth">身份验证方式</label>
+                  <select id="conn-auth" aria-label="Auth Method" x-model="connectionForm.auth_method" class="m3-input term-select">
+                    <option value="password">密码认证 (Password)</option>
+                    <option value="key">私钥认证 (Private Key)</option>
                   </select>
                 </div>
                 <template x-if="connectionForm.auth_method === 'password' || connectionForm.type === 'RDP'">
-                  <div class="form-row-inline">
-                    <span class="form-key">Password:</span>
-                    <input aria-label="Password" x-model="connectionForm.password" type="password" autocomplete="current-password" :placeholder="connectionForm.id ? '(leave blank to keep stored password)' : '••••••••'" class="term-input">
+                  <div class="m3-field-wrap">
+                    <label class="m3-field-label" for="conn-pwd">登录密码</label>
+                    <input id="conn-pwd" aria-label="Password" x-model="connectionForm.password" type="password" autocomplete="current-password" :placeholder="connectionForm.id ? '(留空表示保持当前保存的密码)' : '••••••••'" class="m3-input">
                   </div>
                 </template>
                 <template x-if="connectionForm.auth_method === 'key' && connectionForm.type !== 'RDP'">
-                  <div class="form-stack">
-                    <div class="form-row-inline">
-                      <span class="form-key">Private Key:</span>
-                      <textarea aria-label="Private Key" x-model="connectionForm.private_key" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..." class="term-textarea"></textarea>
+                  <div>
+                    <div class="m3-field-wrap">
+                      <label class="m3-field-label" for="conn-key">SSH 私钥内容 (OpenSSH / RSA / Ed25519)</label>
+                      <textarea id="conn-key" aria-label="Private Key" x-model="connectionForm.private_key" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..." class="m3-input term-textarea" style="height:120px;"></textarea>
                     </div>
-                    <div class="form-row-inline">
-                      <span class="form-key">Passphrase:</span>
-                      <input aria-label="Passphrase" x-model="connectionForm.passphrase" type="password" autocomplete="current-password" placeholder="Passphrase (optional)" class="term-input">
+                    <div class="m3-field-wrap">
+                      <label class="m3-field-label" for="conn-passphrase">私钥密码 (Passphrase，可选)</label>
+                      <input id="conn-passphrase" aria-label="Passphrase" x-model="connectionForm.passphrase" type="password" autocomplete="current-password" placeholder="若私钥有密码保护请输入" class="m3-input">
                     </div>
                   </div>
                 </template>
-                <div class="form-row-inline">
-                  <span class="form-key">Notes:</span>
-                  <input aria-label="Notes" x-model="connectionForm.notes" placeholder="Optional notes..." class="term-input">
+                <div class="m3-field-wrap">
+                  <label class="m3-field-label" for="conn-notes">备注信息 (可选)</label>
+                  <input id="conn-notes" aria-label="Notes" x-model="connectionForm.notes" placeholder="可选的主机备注说明..." class="m3-input">
                 </div>
-                <div class="form-actions">
-                  <button class="term-btn primary" type="submit">[ Save Host ]</button>
-                  <button class="term-btn" type="button" @click="testConnection()">[ Test Connectivity ]</button>
-                  <button class="term-btn" type="button" @click="cancelConnectionForm()">[ Cancel ]</button>
+                <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+                  <button class="m3-btn m3-btn-outlined" type="button" @click="cancelConnectionForm()">取消</button>
+                  <button class="m3-btn m3-btn-tonal" type="button" @click="testConnection()">测试连通性</button>
+                  <button class="m3-btn m3-btn-filled primary" type="submit">保存主机配置</button>
                 </div>
               </form>
             </div>
           </section>
         </div>
 
-        <!-- Connection Test Result Modal -->
+        <!-- 5. CONNECTION TEST RESULT MODAL -->
         <div x-show="testResultModal.visible" x-effect="syncDialog($el, testResultModal.visible)" role="dialog" aria-modal="true" aria-label="连接测试" class="modal-backdrop test-result-backdrop">
-          <div class="test-result-card">
+          <div class="m3-dialog test-result-card" style="max-width:440px;">
             <div class="modal-head">
-              <span class="modal-title" x-text="'=== [ ' + testResultModal.title + ' ] ==='"></span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-rounded" :style="'color:' + (testResultModal.type === 'error' ? 'var(--md-sys-color-error)' : '#34a853')" x-text="testResultModal.type === 'error' ? 'cancel' : 'check_circle'"></span>
+                <span class="modal-title" x-text="testResultModal.title"></span>
+              </div>
             </div>
-            <p x-text="testResultModal.message" :class="'test-result-msg ' + testResultModal.type"></p>
-            <div class="test-result-actions">
-              <button class="term-btn primary" @click="testResultModal.visible = false">[ OK ]</button>
+            <p x-text="testResultModal.message" style="margin:12px 0 20px 0;line-height:1.5;color:var(--md-sys-color-on-surface);"></p>
+            <div style="display:flex;justify-content:flex-end;">
+              <button class="m3-btn m3-btn-filled primary" @click="testResultModal.visible = false">确定</button>
             </div>
           </div>
         </div>
 
-        <!-- Remote File Editor Window (Monaco / Plaintext) -->
+        <!-- 6. REMOTE FILE EDITOR WINDOW (MONACO / MOBILE TEXTAREA) -->
         <div x-show="activeEditorTab" class="editor-backdrop" :class="editorWindow.minimized ? 'is-minimized' : ''">
-          <div class="editor-window" :class="{ maximized: editorWindow.maximized, minimized: editorWindow.minimized, resizing: editorWindow.resizing, 'is-saving': editorSaveFeedback.state === 'saving', 'save-success': editorSaveFeedback.state === 'saved' }" :style="editorWindowStyle()">
+          <div class="editor-window" :class="{ maximized: editorWindow.maximized, minimized: editorWindow.minimized, resizing: editorWindow.resizing }">
             <div class="editor-head" @pointerdown="startEditorDrag($event)" @dblclick="toggleEditorMaximize()">
               <div class="editor-title">
-                <span class="editor-prompt">EDIT:</span>
+                <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">edit_document</span>
                 <strong x-text="activeEditorTab?.name || ''" :title="activeEditorTab?.path || ''"></strong>
                 <small x-show="!isMobile" x-text="'(' + (activeEditorTab?.path || '') + ')'"></small>
               </div>
               <div class="editor-actions">
-                <button class="term-btn primary editor-save-btn" @click.stop="saveEditor()" :disabled="editorSaveFeedback.state === 'saving'">
-                  <span x-text="editorSaveFeedback.state === 'saved' ? '[ Saved ✓ ]' : (editorSaveFeedback.state === 'saving' ? '[ Saving... ]' : '[ Save ]')"></span>
+                <button class="m3-btn m3-btn-filled primary editor-save-btn" style="height:36px;padding:0 14px;" @click.stop="saveEditor()" :disabled="editorSaveFeedback.state === 'saving'">
+                  <span class="material-symbols-rounded" style="font-size:18px;" x-text="editorSaveFeedback.state === 'saved' ? 'check' : (editorSaveFeedback.state === 'saving' ? 'sync' : 'save')"></span>
+                  <span x-text="editorSaveFeedback.state === 'saved' ? '已保存 ✓' : (editorSaveFeedback.state === 'saving' ? '正在保存...' : '保存')"></span>
                 </button>
-                <button class="term-btn" x-show="!isMobile" @click.stop="minimizeEditor()">[ Min ]</button>
-                <button class="term-btn" x-show="!isMobile" @click.stop="toggleEditorMaximize()" x-text="editorWindow.maximized ? '[ Restore ]' : '[ Max ]'"></button>
-                <button class="term-btn" @click.stop="closeEditorTab(activeEditorTabId)">[ Close X ]</button>
+                <button class="m3-icon-btn" x-show="!isMobile" @click.stop="minimizeEditor()" title="最小化">
+                  <span class="material-symbols-rounded">minimize</span>
+                </button>
+                <button class="m3-icon-btn" x-show="!isMobile" @click.stop="toggleEditorMaximize()" :title="editorWindow.maximized ? '向下还原' : '最大化'">
+                  <span class="material-symbols-rounded" x-text="editorWindow.maximized ? 'fullscreen_exit' : 'fullscreen'"></span>
+                </button>
+                <button class="m3-icon-btn" @click.stop="closeEditorTab(activeEditorTabId)" title="关闭编辑器">
+                  <span class="material-symbols-rounded">close</span>
+                </button>
               </div>
             </div>
             <template x-if="activeEditorTab">
@@ -761,29 +1225,35 @@
                 <div id="monaco-editor-container" class="monaco-editor-container" :class="monacoReady && !isMobile ? '' : 'hidden-editor'" x-init="$nextTick(() => initMonacoEditor())" x-effect="updateMonacoEditor()"></div>
               </div>
             </template>
-            <template x-if="!editorWindow.minimized && !editorWindow.maximized">
-              <div class="editor-resize-handles">
-                <span class="resize-handle n" @pointerdown.prevent="startEditorResize($event, 'n')"></span>
-                <span class="resize-handle e" @pointerdown.prevent="startEditorResize($event, 'e')"></span>
-                <span class="resize-handle s" @pointerdown.prevent="startEditorResize($event, 's')"></span>
-                <span class="resize-handle w" @pointerdown.prevent="startEditorResize($event, 'w')"></span>
-                <span class="resize-handle ne" @pointerdown.prevent="startEditorResize($event, 'ne')"></span>
-                <span class="resize-handle nw" @pointerdown.prevent="startEditorResize($event, 'nw')"></span>
-                <span class="resize-handle se" @pointerdown.prevent="startEditorResize($event, 'se')"></span>
-                <span class="resize-handle sw" @pointerdown.prevent="startEditorResize($event, 'sw')"></span>
-              </div>
-            </template>
           </div>
         </div>
 
-        <!-- File Explorer Context Menu -->
+        <!-- 7. FILE CONTEXT MENU -->
         <div x-show="contextMenu.visible" :style="`left:${contextMenu.x}px;top:${contextMenu.y}px`" class="context-menu" @click.stop>
-          <button @click="copyEntry()">[ Copy ]</button>
-          <button @click="cutEntry()">[ Cut ]</button>
-          <button @click="pasteClipboard()">[ Paste ]</button>
-          <button x-show="contextMenu.entry && !contextMenu.entry.isDir" @click="readFile(contextMenu.entry.filename); hideContextMenu()">[ Edit / View ]</button>
-          <button x-show="contextMenu.entry && !contextMenu.entry.isDir" @click="downloadEntry(contextMenu.entry); hideContextMenu()">[ Download ]</button>
-          <button class="danger-text" x-show="contextMenu.entry" @click="removeEntry(contextMenu.entry); hideContextMenu()">[ Delete ]</button>
+          <button @click="copyEntry()">
+            <span class="material-symbols-rounded">content_copy</span>
+            <span>复制</span>
+          </button>
+          <button @click="cutEntry()">
+            <span class="material-symbols-rounded">content_cut</span>
+            <span>剪切</span>
+          </button>
+          <button @click="pasteClipboard()">
+            <span class="material-symbols-rounded">content_paste</span>
+            <span>粘贴到此</span>
+          </button>
+          <button x-show="contextMenu.entry && !contextMenu.entry.isDir" @click="readFile(contextMenu.entry.filename); hideContextMenu()">
+            <span class="material-symbols-rounded">edit_note</span>
+            <span>编辑 / 查看</span>
+          </button>
+          <button x-show="contextMenu.entry && !contextMenu.entry.isDir" @click="downloadEntry(contextMenu.entry); hideContextMenu()">
+            <span class="material-symbols-rounded">download</span>
+            <span>下载文件</span>
+          </button>
+          <button class="danger-text" x-show="contextMenu.entry" @click="removeEntry(contextMenu.entry); hideContextMenu()">
+            <span class="material-symbols-rounded">delete</span>
+            <span>删除</span>
+          </button>
         </div>
 
       </div>
@@ -801,8 +1271,8 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/pwa.js?v=20260910_pwa_v4"></script>
-  <script src="/assets/js/app.js?v=20260910_pwa_v4"></script>
+  <script src="/assets/js/pwa.js?v=20260912_m3_3"></script>
+  <script src="/assets/js/app.js?v=20260912_m3_3"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>

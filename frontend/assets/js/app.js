@@ -30,7 +30,20 @@ function shadowApp() {
     activePath: '.',
     files: [],
     statuses: {},
-    theme: localStorage.getItem('slatessh-theme') || 'dark',
+    theme: localStorage.getItem('slatessh_color_mode') || localStorage.getItem('slatessh-theme') || 'dark',
+    colorMode: localStorage.getItem('slatessh_color_mode') || localStorage.getItem('slatessh-theme') || 'dark',
+    palette: localStorage.getItem('slatessh_palette') || 'blue',
+    showThemePicker: false,
+    showPassword: false,
+    availablePalettes: [
+      { id: 'blue', name: 'Google Blue', color: '#0b57d0' },
+      { id: 'green', name: 'Emerald Green', color: '#1e8e3e' },
+      { id: 'amber', name: 'Sunset Amber', color: '#d97706' },
+      { id: 'red', name: 'Expressive Red', color: '#d93025' },
+      { id: 'purple', name: 'Iris Purple', color: '#6750a4' },
+      { id: 'teal', name: 'Ocean Teal', color: '#006a6a' },
+      { id: 'pink', name: 'Rose Pink', color: '#984061' }
+    ],
     rightTab: 'files',
     showSidebar: true,
     showStatusWidget: true,
@@ -42,7 +55,7 @@ function shadowApp() {
     showEditorPanel: false,
     showConnectionForm: false,
     showConnectionManager: false,
-    connectionFormSource: null, // 'sidebar' | 'manager'
+    connectionFormSource: null, // 'launcher' | 'sidebar' | 'directory'
     isFullscreen: false,
     connectionQuery: '',
     terminalSearch: '',
@@ -148,6 +161,14 @@ function shadowApp() {
     },
 
     openMobilePanel(panel) {
+      if (panel === 'terminal') {
+        this.showMobileMenu = false;
+        this.showMobileTools = false;
+        this.showMobileSftp = false;
+        this.showMobileStatus = false;
+        this.terminals[this.activeSessionId]?.focus();
+        return;
+      }
       this.terminals[this.activeSessionId]?.blur();
       this.showMobileMenu = panel === 'hosts';
       this.showMobileTools = panel === 'tools';
@@ -297,7 +318,10 @@ function shadowApp() {
 
     toggleSidebarPanel() {
       this.showSidebar = !this.showSidebar;
-      this.refreshActiveViewport();
+      this.$nextTick(() => {
+        this.refreshActiveViewport();
+        setTimeout(() => this.refreshActiveViewport(), 80);
+      });
     },
 
     toggleUtilityPanel() {
@@ -309,7 +333,10 @@ function shadowApp() {
       } else {
         this.showSftpWidget = true;
       }
-      this.refreshActiveViewport();
+      this.$nextTick(() => {
+        this.refreshActiveViewport();
+        setTimeout(() => this.refreshActiveViewport(), 80);
+      });
     },
 
     get pathSegments() {
@@ -343,6 +370,7 @@ function shadowApp() {
       this._resizeTimer = null;
       this._focusTimer = null;
       this.setupViewport();
+      this.applyThemeAttrs();
 
       window.addEventListener('online', () => { this.isOnline = true; });
       window.addEventListener('offline', () => { this.isOnline = false; });
@@ -400,7 +428,7 @@ function shadowApp() {
         this.hideContextMenu();
         if (!this.authenticated && !this.booting && !this.needsSetup) {
           const target = e.target;
-          if (target && target.tagName !== 'BUTTON' && target.type !== 'checkbox' && !target.closest('button') && !target.closest('label')) {
+          if (target && target.tagName !== 'BUTTON' && target.tagName !== 'INPUT' && target.type !== 'checkbox' && !target.closest('button') && !target.closest('label') && !target.closest('.m3-dialog')) {
             this.focusLoginInput(true);
           }
         }
@@ -537,12 +565,39 @@ function shadowApp() {
       await fetch('/api/v1/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showServerStatusWidget: String(this.showStatusWidget), showSftpWidget: String(this.showSftpWidget) }) });
     },
 
-    toggleTheme() {
-      this.theme = this.theme === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('slatessh-theme', this.theme);
+    setPalette(name) {
+      this.palette = name;
+      localStorage.setItem('slatessh_palette', name);
+      this.applyThemeAttrs();
+    },
+
+    setColorMode(mode) {
+      this.colorMode = mode;
+      this.theme = mode;
+      localStorage.setItem('slatessh_color_mode', mode);
+      localStorage.setItem('slatessh-theme', mode);
+      this.applyThemeAttrs();
       setTimeout(() => {
         for (const id of Object.keys(this.fitAddons)) this.resizeActiveTerminal(id);
-      }, 30);
+      }, 50);
+    },
+
+    toggleColorMode() {
+      this.setColorMode(this.colorMode === 'dark' ? 'light' : 'dark');
+    },
+
+    toggleTheme() {
+      this.toggleColorMode();
+    },
+
+    applyThemeAttrs() {
+      const root = document.documentElement;
+      root.dataset.palette = this.palette;
+      root.dataset.theme = this.colorMode;
+      const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+      if (themeColorMeta) {
+        themeColorMeta.setAttribute('content', this.colorMode === 'dark' ? '#10131a' : '#f8f9fc');
+      }
     },
 
     openConnectionManager() {
@@ -570,11 +625,11 @@ function shadowApp() {
       } catch (_) {}
     },
 
-    newConnection(type = 'SSH', source = 'sidebar') {
+    newConnection(type = 'SSH', source = 'launcher') {
       this.connectionForm = { id: null, name: '', type, host: '', port: type === 'RDP' ? 3389 : 22, username: type === 'RDP' ? '' : 'root', auth_method: 'password', password: '', private_key: '', passphrase: '', notes: '' };
       this.testMessage = '';
       this.testMessageType = 'info';
-      this.connectionFormSource = source === 'manager' ? 'manager' : 'sidebar';
+      this.connectionFormSource = source;
       this.showConnectionForm = true;
       this.showConnectionManager = true;
     },
@@ -582,8 +637,10 @@ function shadowApp() {
     cancelConnectionForm() {
       this.showConnectionForm = false;
       this.testMessage = '';
-      if (this.connectionFormSource === 'manager') {
-        this.connectionFormSource = null;
+      const returnToDirectory = this.connectionFormSource === 'directory';
+      this.connectionFormSource = null;
+      if (returnToDirectory) {
+        this.showConnectionManager = true;
         return;
       }
       this.closeConnectionManager();
@@ -602,8 +659,8 @@ function shadowApp() {
       if (!this.connectionForm.auth_method) this.connectionForm.auth_method = 'password';
     },
 
-    editConnection(connection, source = 'manager') {
-      this.connectionFormSource = source === 'sidebar' ? 'sidebar' : 'manager';
+    editConnection(connection, source = 'launcher') {
+      this.connectionFormSource = source;
       this.showConnectionForm = true;
       this.showConnectionManager = true;
       this.connectionForm = {
@@ -629,10 +686,10 @@ function shadowApp() {
       const resp = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await resp.json();
       if (!resp.ok) { this.error = data.message || '保存失败'; return; }
-      const returnToManager = this.connectionFormSource === 'manager';
+      const returnToDirectory = this.connectionFormSource === 'directory';
       this.showConnectionForm = false;
       this.connectionFormSource = null;
-      if (returnToManager) {
+      if (returnToDirectory) {
         this.showConnectionManager = true;
       } else {
         this.showConnectionManager = false;
@@ -2405,17 +2462,22 @@ function shadowApp() {
     },
 
     getFileIcon(entry) {
-      if (entry.isDir) return '[DIR]';
+      if (entry.isDir) return 'folder';
       const parts = (entry.filename || '').split('.');
       if (parts.length > 1) {
-        const ext = parts.pop().toUpperCase();
-        if (ext && ext.length <= 4) return `[${ext}]`;
+        const ext = parts.pop().toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'ico'].includes(ext)) return 'image';
+        if (['js', 'ts', 'jsx', 'tsx', 'go', 'py', 'c', 'cpp', 'rs', 'java', 'html', 'css', 'json', 'yaml', 'yml', 'sh', 'sql', 'md'].includes(ext)) return 'code';
+        if (['zip', 'tar', 'gz', 'bz2', 'xz', '7z', 'rar'].includes(ext)) return 'archive';
+        if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 'audio_file';
+        if (['mp4', 'mkv', 'avi', 'mov'].includes(ext)) return 'video_file';
+        if (['pdf'].includes(ext)) return 'picture_as_pdf';
       }
-      return '[FILE]';
+      return 'description';
     },
 
     getFileIconClass(entry) {
-      return entry.isDir ? 'file-badge dir-badge' : 'file-badge';
+      return entry.isDir ? 'material-symbols-rounded file-icon folder' : 'material-symbols-rounded file-icon';
     }
   };
 }
