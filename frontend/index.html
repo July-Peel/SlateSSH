@@ -19,7 +19,7 @@
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260912_m3_6">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260912_m3_7">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" class="app" :class="{ 'keyboard-open': isKeyboardOpen, 'theme-dark': colorMode === 'dark', 'theme-light': colorMode === 'light' }" x-cloak>
@@ -540,35 +540,6 @@
                   <span>退出全屏 (ESC)</span>
                 </button>
 
-                <!-- Fullscreen Copy Viewer -->
-                <div x-show="terminalCopyViewer.visible" x-effect="syncDialog($el, terminalCopyViewer.visible)" role="dialog" aria-modal="true" aria-label="复制终端输出" class="terminal-copy-viewer" @click.stop>
-                  <div class="modal-head">
-                    <span class="modal-title">终端文本缓冲区输出</span>
-                    <div style="display:flex;gap:6px;">
-                      <button class="m3-btn m3-btn-tonal" style="height:34px;" @click="selectAllCopyViewer()">全选</button>
-                      <button class="m3-btn m3-btn-filled primary" style="height:34px;" @click="copyAllFromViewer()">复制</button>
-                      <button class="m3-icon-btn" style="width:34px;height:34px;" @click="closeTerminalCopyViewer()">
-                        <span class="material-symbols-rounded">close</span>
-                      </button>
-                    </div>
-                  </div>
-                  <textarea aria-label="终端输出" readonly x-model="terminalCopyViewer.text" spellcheck="false" class="term-copy-textarea"></textarea>
-                </div>
-
-                <!-- Paste Box Popover -->
-                <div x-show="terminalPasteBox.visible" x-effect="syncDialog($el, terminalPasteBox.visible)" role="dialog" aria-modal="true" aria-label="粘贴命令" class="terminal-paste-popover" @click.stop>
-                  <div class="modal-head">
-                    <span class="modal-title">发送文本至终端 (PTY)</span>
-                    <button class="m3-icon-btn" @click="closeTerminalPasteBox()">
-                      <span class="material-symbols-rounded">close</span>
-                    </button>
-                  </div>
-                  <textarea aria-label="待粘贴的命令" autocapitalize="none" autocorrect="off" spellcheck="false" x-model="terminalPasteBox.text" placeholder="在此粘贴或输入要执行的命令..." class="term-textarea" @keydown.ctrl.enter.prevent="sendTerminalPasteText()" @keydown.meta.enter.prevent="sendTerminalPasteText()"></textarea>
-                  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
-                    <button class="m3-btn m3-btn-outlined" @click="closeTerminalPasteBox()">取消</button>
-                    <button class="m3-btn m3-btn-filled primary" @click="sendTerminalPasteText()">发送命令</button>
-                  </div>
-                </div>
 
                 <!-- Terminals and Connecting Cards -->
                 <template x-for="tab in sessions" :key="tab.id + '-terminal'">
@@ -644,6 +615,7 @@
                   <button type="button" class="mob-btn" data-action="quick" data-key="tab" title="Tab 补全">TAB</button>
                   <button type="button" class="mob-btn" data-action="ctrl" :class="ctrlKeyActive ? 'active' : ''" :aria-pressed="ctrlKeyActive" title="Ctrl 组合键">CTRL</button>
                   <button type="button" class="mob-btn danger" data-action="quick" data-key="interrupt" title="中断 Ctrl+C">^C</button>
+                  <button type="button" class="mob-btn primary" data-action="copy" title="一比一复制全部终端文本 (COPY)">COPY</button>
                   <button type="button" class="mob-btn primary" data-action="paste" title="粘贴剪贴板">PASTE</button>
                   <button type="button" class="mob-btn" data-action="quick" data-key="up" aria-label="方向键 上">↑</button>
                   <button type="button" class="mob-btn" data-action="quick" data-key="down" aria-label="方向键 下">↓</button>
@@ -1225,7 +1197,80 @@
           </div>
         </div>
 
-        <!-- 7. FILE CONTEXT MENU -->
+        <!-- 7. TERMINAL COPY VIEWER MODAL (MOBILE & PC) -->
+        <div class="modal-backdrop" :class="isMobile ? 'mobile-modal-backdrop' : ''" x-show="terminalCopyViewer.visible" @click.self="closeTerminalCopyViewer()" x-effect="syncDialog($el, terminalCopyViewer.visible)" role="dialog" aria-modal="true" aria-label="复制终端文本">
+          <section class="m3-dialog copy-viewer-dialog" :class="isMobile ? 'mobile-term-modal' : ''" @click.stop>
+            <div class="m3-drag-handle" x-show="isMobile"></div>
+            <div class="modal-head">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">content_copy</span>
+                <span class="modal-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">终端文本输出 (一比一复制)</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                <button type="button" class="m3-btn m3-btn-tonal" style="height:34px;padding:0 12px;font-size:0.82rem;" @click="selectAllCopyViewer()">
+                  <span class="material-symbols-rounded" style="font-size:16px;">select_all</span>
+                  <span>全选</span>
+                </button>
+                <button type="button" class="m3-btn m3-btn-filled primary" style="height:34px;padding:0 12px;font-size:0.82rem;" @click="copyAllFromViewer()">
+                  <span class="material-symbols-rounded" style="font-size:16px;">content_copy</span>
+                  <span>复制</span>
+                </button>
+                <button type="button" class="m3-icon-btn" style="width:34px;height:34px;" @click="closeTerminalCopyViewer()" aria-label="关闭文本框">
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+              </div>
+            </div>
+            
+            <div class="copy-viewer-desc" style="font-size:0.82rem;color:var(--md-sys-color-on-surface-variant);margin:4px 0 8px 0;display:flex;align-items:center;gap:6px;">
+              <span class="material-symbols-rounded" style="font-size:16px;color:var(--md-sys-color-primary);">touch_app</span>
+              <span>支持在多行文本框内长按选择 / 复制，或点击上方「全选」「复制」按钮。</span>
+            </div>
+
+            <textarea
+              id="terminal-copy-textarea"
+              class="term-copy-textarea"
+              x-model="terminalCopyViewer.text"
+              placeholder="终端缓冲区暂无文本..."
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+              aria-label="终端完整文本内容"
+              @pointerdown.stop
+              @touchstart.stop
+            ></textarea>
+
+            <div class="copy-viewer-footer" style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:0.8rem;color:var(--md-sys-color-on-surface-variant);" x-text="'共 ' + (terminalCopyViewer.text ? terminalCopyViewer.text.split('\n').length : 0) + ' 行 · ' + (terminalCopyViewer.text ? terminalCopyViewer.text.length : 0) + ' 字符'"></span>
+              <div style="display:flex;gap:8px;">
+                <button type="button" class="m3-btn m3-btn-outlined" style="height:36px;padding:0 16px;" @click="closeTerminalCopyViewer()">关闭</button>
+                <button type="button" class="m3-btn m3-btn-filled primary" style="height:36px;padding:0 16px;" @click="copyAllFromViewer()">复制全部内容</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- 8. TERMINAL PASTE BOX MODAL (MOBILE & PC) -->
+        <div class="modal-backdrop" :class="isMobile ? 'mobile-modal-backdrop' : ''" x-show="terminalPasteBox.visible" @click.self="closeTerminalPasteBox()" x-effect="syncDialog($el, terminalPasteBox.visible)" role="dialog" aria-modal="true" aria-label="粘贴命令">
+          <section class="m3-dialog paste-box-dialog" :class="isMobile ? 'mobile-term-modal' : ''" @click.stop>
+            <div class="m3-drag-handle" x-show="isMobile"></div>
+            <div class="modal-head">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">content_paste</span>
+                <span class="modal-title">发送文本至终端 (PTY)</span>
+              </div>
+              <button class="m3-icon-btn" @click="closeTerminalPasteBox()" aria-label="关闭">
+                <span class="material-symbols-rounded">close</span>
+              </button>
+            </div>
+            <textarea aria-label="待粘贴的命令" autocapitalize="none" autocorrect="off" spellcheck="false" x-model="terminalPasteBox.text" placeholder="在此粘贴或输入要执行的命令..." class="term-textarea" style="width:100%;height:160px;margin:12px 0;background-color:#090a0f;color:#e2e8f0;font-family:var(--font-mono);font-size:0.86rem;padding:12px;border-radius:var(--m3-shape-md);border:1px solid var(--md-sys-color-outline-variant);resize:vertical;box-sizing:border-box;" @keydown.ctrl.enter.prevent="sendTerminalPasteText()" @keydown.meta.enter.prevent="sendTerminalPasteText()"></textarea>
+            <div style="display:flex;justify-content:flex-end;gap:8px;">
+              <button class="m3-btn m3-btn-outlined" @click="closeTerminalPasteBox()">取消</button>
+              <button class="m3-btn m3-btn-filled primary" @click="sendTerminalPasteText()">发送命令</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- 9. FILE CONTEXT MENU -->
         <div x-show="contextMenu.visible" class="context-menu-scrim" @click="hideContextMenu()" @contextmenu.prevent="hideContextMenu()"></div>
         <div x-show="contextMenu.visible" :style="`left:${contextMenu.x}px;top:${contextMenu.y}px`" class="context-menu" @click.stop @click.away="hideContextMenu()">
           <button @click="copyEntry()">
@@ -1256,6 +1301,12 @@
 
       </div>
     </template>
+
+    <!-- Global Material 3 Snackbar Toast -->
+    <div class="m3-snackbar" x-show="testMessage" x-transition @click="testMessage = ''">
+      <span class="material-symbols-rounded" :style="testMessageType === 'success' ? 'color:#34a853;' : (testMessageType === 'error' ? 'color:var(--md-sys-color-error);' : 'color:var(--md-sys-color-primary);')" x-text="testMessageType === 'success' ? 'check_circle' : (testMessageType === 'error' ? 'error' : 'info')"></span>
+      <span x-text="testMessage"></span>
+    </div>
   </div>
 
   <script src="/assets/vendor/xterm/xterm.js"></script>
@@ -1269,8 +1320,8 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/pwa.js?v=20260912_m3_6"></script>
-  <script src="/assets/js/app.js?v=20260912_m3_6"></script>
+  <script src="/assets/js/pwa.js?v=20260912_m3_7"></script>
+  <script src="/assets/js/app.js?v=20260912_m3_7"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>

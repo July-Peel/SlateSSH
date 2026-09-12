@@ -389,6 +389,15 @@ function shadowApp() {
       this.setupViewport();
       this.applyThemeAttrs();
 
+      this.$watch('testMessage', (val) => {
+        if (val) {
+          clearTimeout(this._toastTimer);
+          this._toastTimer = setTimeout(() => {
+            if (this.testMessage === val) this.testMessage = '';
+          }, 3000);
+        }
+      });
+
       window.addEventListener('online', () => { this.isOnline = true; });
       window.addEventListener('offline', () => { this.isOnline = false; });
       window.addEventListener('slate:update-ready', () => { this.updateAvailable = true; });
@@ -1496,29 +1505,39 @@ function shadowApp() {
       if (!term || !buffer) return '';
       const lines = [];
       for (let i = 0; i < buffer.length; i++) {
-        const line = buffer.getLine(i)?.translateToString(true);
-        if (line !== undefined) lines.push(line);
+        const line = buffer.getLine(i);
+        if (!line) continue;
+        const text = line.translateToString(true);
+        if (line.isWrapped && lines.length > 0) {
+          lines[lines.length - 1] += text;
+        } else {
+          lines.push(text);
+        }
       }
-      return lines.join('\n').replace(/\s+$/g, '');
+      while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+        lines.pop();
+      }
+      return lines.join('\n');
     },
 
     openTerminalCopyViewer() {
+      if (!this.activeSessionId) return;
       const text = this.getTerminalAllText(this.activeSessionId);
       this.terminalCopyViewer.text = text || '';
       this.terminalCopyViewer.visible = true;
       this.$nextTick(() => {
-        const textarea = document.querySelector('.terminal-copy-viewer textarea');
+        const textarea = document.getElementById('terminal-copy-textarea') || document.querySelector('.term-copy-textarea');
         if (textarea) {
-          textarea.focus();
-          textarea.select();
+          textarea.focus({ preventScroll: true });
+          textarea.scrollTop = textarea.scrollHeight;
         }
       });
     },
 
     selectAllCopyViewer() {
-      const textarea = document.querySelector('.terminal-copy-viewer textarea');
+      const textarea = document.getElementById('terminal-copy-textarea') || document.querySelector('.term-copy-textarea');
       if (textarea) {
-        textarea.focus();
+        textarea.focus({ preventScroll: true });
         textarea.select();
         try {
           textarea.setSelectionRange(0, textarea.value.length);
@@ -1530,7 +1549,7 @@ function shadowApp() {
       const text = this.terminalCopyViewer.text;
       if (!text) return;
       const ok = await this.writeClipboardText(text);
-      this.testMessage = ok ? '已复制终端全部内容' : '已全选，请长按文本框复制';
+      this.testMessage = ok ? '已复制终端全部内容至剪贴板 ✓' : '已全选，请在多行文本框内长按复制';
       this.testMessageType = ok ? 'success' : 'info';
     },
 

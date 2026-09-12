@@ -2225,33 +2225,107 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   color: var(--md-sys-color-error);
 }
 
-/* Terminal Copy/Paste Popovers */
-.terminal-copy-viewer, .terminal-paste-popover {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 90%;
-  max-width: 600px;
+/* Terminal Copy Viewer & Paste Modals */
+.copy-viewer-dialog {
+  width: 92%;
+  max-width: 740px;
   background-color: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--m3-shape-xl);
-  padding: 20px;
+  border-radius: var(--m3-shape-2xl);
+  padding: 24px;
   box-shadow: var(--m3-elevation-4);
-  z-index: 100;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
+
+.paste-box-dialog {
+  width: 90%;
+  max-width: 620px;
+  background-color: var(--md-sys-color-surface-container);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--m3-shape-2xl);
+  padding: 24px;
+  box-shadow: var(--m3-elevation-4);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
 .term-copy-textarea {
   width: 100%;
-  height: 280px;
-  background-color: #0b0e14;
+  height: 340px;
+  max-height: 52vh;
+  min-height: 180px;
+  background-color: #090a0f;
   color: #e2e8f0;
   font-family: var(--font-mono);
-  font-size: 0.88rem;
-  padding: 12px;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  padding: 14px;
   border-radius: var(--m3-shape-md);
-  border: none;
-  resize: none;
-  margin: 14px 0;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+  touch-action: manipulation;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.term-copy-textarea:focus {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 1px var(--md-sys-color-primary);
+}
+
+/* Material 3 Toast / Snackbar */
+.m3-snackbar {
+  position: fixed;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--md-sys-color-inverse-surface);
+  color: var(--md-sys-color-inverse-on-surface);
+  border-radius: var(--m3-shape-full);
+  padding: 10px 20px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: var(--m3-elevation-3);
+  z-index: 300;
+  cursor: pointer;
+  pointer-events: auto;
+  max-width: 90vw;
+  animation: m3ScaleUp 160ms var(--m3-motion-emphasized);
+}
+
+@media (max-width: 1023px) {
+  .copy-viewer-dialog.mobile-term-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 88vh !important;
+    border-radius: 28px 28px 0 0 !important;
+    padding: 16px 18px calc(20px + var(--safe-bottom)) 18px !important;
+  }
+  .paste-box-dialog.mobile-term-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 28px 28px 0 0 !important;
+    padding: 16px 18px calc(20px + var(--safe-bottom)) 18px !important;
+  }
+  .term-copy-textarea {
+    height: 42vh;
+    max-height: 48vh;
+    font-size: 0.82rem;
+  }
+  .m3-snackbar {
+    bottom: calc(64px + var(--safe-bottom) + 16px);
+  }
 }
 
 /* Fullscreen Terminal overlay button */
