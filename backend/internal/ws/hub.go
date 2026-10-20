@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -137,7 +138,7 @@ func (h *Hub) ServeDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filename := filepath.Base(targetPath)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Disposition", contentDisposition(filename))
 	contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename)))
 	if contentType == "" {
 		contentType = "application/octet-stream"
@@ -229,8 +230,13 @@ func (h *Hub) handleMessage(ctx context.Context, socket *websocket.Conn, message
 		return h.handleSFTPUnlink(message)
 	case "sftp:rename":
 		return h.handleSFTPRename(message)
+	case "sftp:copy":
+		return h.handleSFTPCopy(socket, message)
 	case "status:refresh":
 		return h.handleStatusRefresh(message)
+	case "ping":
+		// 移动端从后台恢复时用心跳确认连接仍然可用。
+		return h.write(socket, Message{Type: "pong"})
 	default:
 		return fmt.Errorf("unsupported message type: %s", message.Type)
 	}
@@ -558,6 +564,67 @@ func (h *Hub) handleSFTPRename(message Message) error {
 	return h.write(session.Socket, Message{Type: "sftp:rename:result", SessionID: session.ID, Payload: map[string]any{"oldPath": oldPath, "newPath": newPath, "renamed": true}})
 }
 
+// handleSFTPCopy 用于在远端直接复制单个文件，支持二进制和大文件。
+// 输入参数：socket 表示WebSocket 连接；message 表示前端消息。
+// 输出参数：返回 error；error 表示执行失败原因。
+func (h *Hub) handleSFTPCopy(socket *websocket.Conn, message Message) error {
+	session := h.getSession(message.SessionID)
+	if session == nil {
+		return fmt.Errorf("session not found")
+	}
+	sourcePath, _ := stringFromPayload(message.Payload, "sourcePath")
+	targetPath, _ := stringFromPayload(message.Payload, "targetPath")
+	if sourcePath == "" || targetPath == "" {
+		return fmt.Errorf("missing sourcePath or targetPath")
+	}
+	if sourcePath == targetPath {
+		return fmt.Errorf("source and target are the same file")
+	}
+	stat, err := session.SFTPClient.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+	if stat.IsDir() {
+		return fmt.Errorf("directory copy is not supported")
+	}
+	if _, err := session.SFTPClient.Stat(targetPath); err == nil {
+		return fmt.Errorf("target already exists: %s", targetPath)
+	}
+
+	// 大文件复制耗时较长，放到独立协程避免阻塞终端输入。
+	go func() {
+		written, err := copyRemoteFile(session.SFTPClient, sourcePath, targetPath)
+		if err != nil {
+			_ = h.write(socket, Message{Type: "error", SessionID: session.ID, Payload: map[string]any{"message": err.Error()}})
+			return
+		}
+		_ = h.write(socket, Message{Type: "sftp:copy:result", SessionID: session.ID, Payload: map[string]any{"sourcePath": sourcePath, "targetPath": targetPath, "bytes": written}})
+	}()
+	return nil
+}
+
+// copyRemoteFile 用于把远端文件内容复制到新的远端路径。
+// 输入参数：client 表示 SFTP 客户端；sourcePath 表示源路径；targetPath 表示目标路径。
+// 输出参数：返回 int64, error；int64 表示写入字节数，error 表示执行失败原因。
+func copyRemoteFile(client *sftp.Client, sourcePath, targetPath string) (int64, error) {
+	source, err := client.Open(sourcePath)
+	if err != nil {
+		return 0, err
+	}
+	defer source.Close()
+	target, err := client.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+	if err != nil {
+		return 0, err
+	}
+	written, copyErr := io.Copy(target, source)
+	closeErr := target.Close()
+	if copyErr != nil {
+		_ = client.Remove(targetPath)
+		return written, copyErr
+	}
+	return written, closeErr
+}
+
 // getSession 用于根据会话 ID 获取当前客户端会话。
 // 输入参数：id 表示标识符。
 // 输出参数：返回 *ClientSession。
@@ -612,7 +679,9 @@ func (h *Hub) closeSession(id, reason string, notify bool) {
 	}
 
 	if notify {
-		_ = h.write(session.Socket, Message{Type: "ssh:disconnected", SessionID: id, Payload: map[string]any{"reason": reason, "autoCloseTab": true}})
+		// 只有正常退出 shell 或手动断开才自动关闭标签；网络异常时保留标签，方便手机上点“重新连接”。
+		autoCloseTab := reason == "shell exited" || reason == "manual disconnect"
+		_ = h.write(session.Socket, Message{Type: "ssh:disconnected", SessionID: id, Payload: map[string]any{"reason": reason, "autoCloseTab": autoCloseTab}})
 	}
 }
 
@@ -720,6 +789,27 @@ func isLikelyText(data []byte) bool {
 // joinPath 用于拼接远端路径片段。
 // 输入参数：base 表示基础路径；name 表示字段名或参数名。
 // 输出参数：返回 string。
+// contentDisposition 用于生成兼容中文文件名的下载响应头（RFC 6266 / RFC 5987）。
+// 输入参数：filename 表示下载文件名。
+// 输出参数：返回 string。
+func contentDisposition(filename string) string {
+	fallback := strings.Map(func(r rune) rune {
+		if r < 0x20 || r > 0x7e || r == '"' || r == '\\' {
+			return '_'
+		}
+		return r
+	}, filename)
+	var encoded strings.Builder
+	for _, b := range []byte(filename) {
+		if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || strings.IndexByte("!#$&+-.^_`|~", b) >= 0 {
+			encoded.WriteByte(b)
+		} else {
+			fmt.Fprintf(&encoded, "%%%02X", b)
+		}
+	}
+	return fmt.Sprintf("attachment; filename=\"%s\"; filename*=UTF-8''%s", fallback, encoded.String())
+}
+
 func joinPath(base, name string) string {
 	if base == "" || base == "." {
 		return "./" + strings.TrimPrefix(name, "./")

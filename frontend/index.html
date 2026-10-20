@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="dark" data-palette="blue">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
@@ -19,7 +19,7 @@
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260912_m3_7">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20261020_mobile_ios">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" class="app" :class="{ 'keyboard-open': isKeyboardOpen, 'theme-dark': colorMode === 'dark', 'theme-light': colorMode === 'light' }" x-cloak>
@@ -627,7 +627,7 @@
                   <button type="button" class="mob-btn" data-action="quick" data-payload="~">~</button>
                   <button type="button" class="mob-btn" data-action="quick" data-payload="-">-</button>
                   <button type="button" class="mob-btn" data-action="quick" data-payload="|">|</button>
-                  <button type="button" class="dock-keyboard-button" @click="toggleMobileKeyboard()" :aria-label="isKeyboardOpen ? '收起软键盘' : '打开软键盘'" :aria-pressed="isKeyboardOpen">
+                  <button type="button" class="dock-keyboard-button" data-action="keyboard" :aria-label="isKeyboardOpen ? '收起软键盘' : '打开软键盘'" :aria-pressed="isKeyboardOpen">
                     <span class="material-symbols-rounded" style="font-size:18px;">keyboard</span>
                     <span x-text="isKeyboardOpen ? '收起' : '键盘'"></span>
                   </button>
@@ -712,7 +712,6 @@
                     <span class="material-symbols-rounded">upload</span>
                     <span>上传文件</span>
                   </button>
-                  <input type="file" x-ref="uploadInput" class="hidden" @change="handleFileUpload($event)">
                 </div>
 
                 <div class="file-list">
@@ -906,21 +905,31 @@
               <button class="m3-btn m3-btn-tonal file-act-btn" @click="refreshFiles()" title="刷新文件列表"><span class="material-symbols-rounded">refresh</span><span>刷新</span></button>
               <button class="m3-btn m3-btn-tonal file-act-btn" @click="promptMkdir()" title="新建目录"><span class="material-symbols-rounded">create_new_folder</span><span>新建目录</span></button>
               <button class="m3-btn m3-btn-tonal file-act-btn" @click="promptWriteFile()" title="新建文件"><span class="material-symbols-rounded">note_add</span><span>新建文件</span></button>
-              <button class="m3-btn m3-btn-filled primary file-act-btn" @click="triggerUpload()" title="上传本地文件"><span class="material-symbols-rounded">upload</span><span>上传文件</span></button>
+              <button class="m3-btn m3-btn-tonal file-act-btn" x-show="clipboard.mode" @click="pasteClipboard()" title="粘贴到当前目录"><span class="material-symbols-rounded">content_paste</span><span x-text="clipboard.mode === 'cut' ? '移动到此' : '粘贴'"></span></button>
+              <button class="m3-btn m3-btn-filled primary file-act-btn" @click="triggerUpload()" :disabled="uploading" title="上传本地文件"><span class="material-symbols-rounded">upload</span><span x-text="uploading ? uploadProgress + '%' : '上传文件'"></span></button>
             </div>
 
-            <div class="file-list" style="max-height:45vh;">
+            <div class="file-list mobile-file-list">
               <template x-if="!activeSessionId">
                 <div class="m3-empty-state">
                   <span class="material-symbols-rounded">cloud_off</span>
                   <p>连接 SSH 会话后即可浏览文件</p>
                 </div>
               </template>
+              <template x-if="activeSessionId && !files.length">
+                <div class="m3-empty-state">
+                  <span class="material-symbols-rounded">folder_open</span>
+                  <p>此目录为空</p>
+                </div>
+              </template>
               <template x-for="entry in files" :key="entry.filename">
-                <div class="file-item" @contextmenu="showContextMenu($event, entry)" :title="entry.filename + (entry.isDir ? '/' : '')">
-                  <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : (readFile(entry.filename), showMobileSftp = false)">
+                <div class="file-item" @contextmenu="showContextMenu($event, entry)" @touchstart.passive="fileTouchStart($event, entry)" @touchmove.passive="fileTouchMove($event)" @touchend="fileTouchEnd($event)" @touchcancel="fileTouchEnd($event)" :title="entry.filename + (entry.isDir ? '/' : '')">
+                  <button class="file-main" @click="entry.isDir ? openDir(entry.filename) : readFile(entry.filename)">
                     <span :class="getFileIconClass(entry)" x-text="getFileIcon(entry)"></span>
-                    <span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span>
+                    <span class="file-text">
+                      <span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span>
+                      <span class="file-meta" x-text="(entry.isDir ? '' : formatSize(entry.size) + ' · ') + formatUnix(entry.mtime)"></span>
+                    </span>
                   </button>
                   <button class="m3-icon-btn" style="width:36px;height:36px;" @click.stop="showContextMenu($event, entry)" :aria-label="'操作 ' + entry.filename">
                     <span class="material-symbols-rounded">more_vert</span>
@@ -1172,8 +1181,10 @@
             <div class="editor-head" @dblclick="toggleEditorMaximize()">
               <div class="editor-title">
                 <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">edit_document</span>
-                <strong x-text="activeEditorTab?.name || ''" :title="activeEditorTab?.path || ''"></strong>
-                <small x-show="!isMobile" x-text="'(' + (activeEditorTab?.path || '') + ')'"></small>
+                <div class="editor-title-text">
+                  <strong :title="activeEditorTab?.path || ''"><span x-text="activeEditorTab?.name || ''"></span><span class="editor-dirty-dot" x-show="isEditorTabDirty(activeEditorTab)" title="有未保存的修改">●</span></strong>
+                  <small x-text="(activeEditorTab?.hostName ? activeEditorTab.hostName + ' · ' : '') + (activeEditorTab?.path || '')"></small>
+                </div>
               </div>
               <div class="editor-actions">
                 <button class="m3-btn m3-btn-filled primary editor-save-btn" style="height:36px;padding:0 14px;" @click.stop="saveEditor()" :disabled="editorSaveFeedback.state === 'saving'">
@@ -1190,7 +1201,7 @@
             </div>
             <template x-if="activeEditorTab">
               <div class="editor-body">
-                <textarea class="editor-textarea" aria-label="编辑文件内容" autocapitalize="none" autocorrect="off" spellcheck="false" :class="monacoReady && !isMobile ? 'hidden-editor' : ''" x-model="activeEditorTab.content"></textarea>
+                <textarea class="editor-textarea" aria-label="编辑文件内容" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" @keydown.ctrl.s.prevent="saveEditor()" @keydown.meta.s.prevent="saveEditor()" :class="monacoReady && !isMobile ? 'hidden-editor' : ''" :value="activeEditorTab?.content ?? ''" @input="if (activeEditorTab) activeEditorTab.content = $event.target.value"></textarea>
                 <div id="monaco-editor-container" class="monaco-editor-container" :class="monacoReady && !isMobile ? '' : 'hidden-editor'" x-init="$nextTick(() => initMonacoEditor())" x-effect="updateMonacoEditor()"></div>
               </div>
             </template>
@@ -1235,6 +1246,7 @@
               autocorrect="off"
               spellcheck="false"
               aria-label="终端完整文本内容"
+              :inputmode="isMobile ? 'none' : null"
               @pointerdown.stop
               @touchstart.stop
             ></textarea>
@@ -1262,7 +1274,7 @@
                 <span class="material-symbols-rounded">close</span>
               </button>
             </div>
-            <textarea aria-label="待粘贴的命令" autocapitalize="none" autocorrect="off" spellcheck="false" x-model="terminalPasteBox.text" placeholder="在此粘贴或输入要执行的命令..." class="term-textarea" style="width:100%;height:160px;margin:12px 0;background-color:#090a0f;color:#e2e8f0;font-family:var(--font-mono);font-size:0.86rem;padding:12px;border-radius:var(--m3-shape-md);border:1px solid var(--md-sys-color-outline-variant);resize:vertical;box-sizing:border-box;" @keydown.ctrl.enter.prevent="sendTerminalPasteText()" @keydown.meta.enter.prevent="sendTerminalPasteText()"></textarea>
+            <textarea aria-label="待粘贴的命令" autocapitalize="none" autocorrect="off" spellcheck="false" x-model="terminalPasteBox.text" placeholder="在此粘贴或输入要执行的命令..." class="term-textarea" style="width:100%;height:160px;margin:12px 0;background-color:#2C2622;color:#D8CBB5;font-family:var(--font-mono);font-size:0.86rem;padding:12px;border-radius:var(--m3-shape-md);border:1px solid var(--md-sys-color-outline-variant);resize:vertical;box-sizing:border-box;" @keydown.ctrl.enter.prevent="sendTerminalPasteText()" @keydown.meta.enter.prevent="sendTerminalPasteText()"></textarea>
             <div style="display:flex;justify-content:flex-end;gap:8px;">
               <button class="m3-btn m3-btn-outlined" @click="closeTerminalPasteBox()">取消</button>
               <button class="m3-btn m3-btn-filled primary" @click="sendTerminalPasteText()">发送命令</button>
@@ -1272,7 +1284,14 @@
 
         <!-- 9. FILE CONTEXT MENU -->
         <div x-show="contextMenu.visible" class="context-menu-scrim" @click="hideContextMenu()" @contextmenu.prevent="hideContextMenu()"></div>
-        <div x-show="contextMenu.visible" :style="`left:${contextMenu.x}px;top:${contextMenu.y}px`" class="context-menu" @click.stop @click.away="hideContextMenu()">
+        <div x-show="contextMenu.visible" :style="isMobile ? '' : `left:${contextMenu.x}px;top:${contextMenu.y}px`" class="context-menu" :class="isMobile ? 'context-menu-sheet' : ''" role="menu" @click.stop @click.away="hideContextMenu()">
+          <div class="context-menu-head" x-show="isMobile && contextMenu.entry">
+            <span :class="contextMenu.entry ? getFileIconClass(contextMenu.entry) : ''" x-text="contextMenu.entry ? getFileIcon(contextMenu.entry) : ''"></span>
+            <div class="context-menu-title">
+              <strong x-text="contextMenu.entry?.filename || ''"></strong>
+              <small x-text="contextMenu.entry ? ((contextMenu.entry.isDir ? '目录' : formatSize(contextMenu.entry.size)) + ' · ' + formatUnix(contextMenu.entry.mtime)) : ''"></small>
+            </div>
+          </div>
           <button @click="copyEntry()">
             <span class="material-symbols-rounded">content_copy</span>
             <span>复制</span>
@@ -1281,9 +1300,9 @@
             <span class="material-symbols-rounded">content_cut</span>
             <span>剪切</span>
           </button>
-          <button @click="pasteClipboard()">
+          <button x-show="clipboard.mode" @click="pasteClipboard()">
             <span class="material-symbols-rounded">content_paste</span>
-            <span>粘贴到此</span>
+            <span>粘贴到当前目录</span>
           </button>
           <button x-show="contextMenu.entry && !contextMenu.entry.isDir" @click="readFile(contextMenu.entry.filename); hideContextMenu()">
             <span class="material-symbols-rounded">edit_note</span>
@@ -1293,14 +1312,53 @@
             <span class="material-symbols-rounded">download</span>
             <span>下载文件</span>
           </button>
+          <button x-show="contextMenu.entry" @click="renameEntry(contextMenu.entry); hideContextMenu()">
+            <span class="material-symbols-rounded">drive_file_rename_outline</span>
+            <span>重命名</span>
+          </button>
           <button class="danger-text" x-show="contextMenu.entry" @click="removeEntry(contextMenu.entry); hideContextMenu()">
             <span class="material-symbols-rounded">delete</span>
             <span>删除</span>
           </button>
+          <button class="context-menu-cancel" x-show="isMobile" @click="hideContextMenu()">取消</button>
+        </div>
+
+        <!-- 10. iOS WEB APP DOWNLOAD READY SHEET -->
+        <div class="modal-backdrop mobile-modal-backdrop" x-show="downloadReady.visible" @click.self="closeDownloadReady()" x-effect="syncDialog($el, downloadReady.visible)" role="dialog" aria-modal="true" aria-label="保存文件">
+          <section class="m3-dialog mobile-term-modal">
+            <div class="m3-drag-handle"></div>
+            <div class="modal-head">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">download_done</span>
+                <span class="modal-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" x-text="downloadReady.name"></span>
+              </div>
+              <button class="m3-icon-btn" @click="closeDownloadReady()" aria-label="关闭">
+                <span class="material-symbols-rounded">close</span>
+              </button>
+            </div>
+            <p style="font-size:0.88rem;color:var(--md-sys-color-on-surface-variant);margin-bottom:16px;">文件已下载到本机内存，点击下方按钮后在系统面板中选择「存储到“文件”」或其他应用。</p>
+            <button class="m3-btn m3-btn-filled primary" style="width:100%;height:48px;" @click="shareDownloadReady()">
+              <span class="material-symbols-rounded">ios_share</span>
+              <span>保存 / 分享文件</span>
+            </button>
+          </section>
         </div>
 
       </div>
     </template>
+
+    <!-- Global hidden upload input: kept rendered (not display:none) so iOS Safari opens the picker reliably -->
+    <input type="file" multiple x-ref="uploadInput" class="visually-hidden-input" tabindex="-1" aria-hidden="true" @change="handleFileUpload($event)">
+
+    <!-- Upload progress -->
+    <div class="m3-snackbar upload-progress-toast" x-show="uploading" role="status">
+      <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">upload</span>
+      <div class="upload-progress-body">
+        <span class="upload-progress-label" x-text="'正在上传 ' + uploadLabel"></span>
+        <div class="upload-progress-track"><div class="upload-progress-fill" :style="`width:${uploadProgress}%`"></div></div>
+      </div>
+      <span style="font-variant-numeric:tabular-nums;" x-text="uploadProgress + '%'"></span>
+    </div>
 
     <!-- Global Material 3 Snackbar Toast -->
     <div class="m3-snackbar" x-show="testMessage" x-transition @click="testMessage = ''">
@@ -1320,8 +1378,8 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/pwa.js?v=20260912_m3_7"></script>
-  <script src="/assets/js/app.js?v=20260912_m3_7"></script>
+  <script src="/assets/js/pwa.js?v=20261020_mobile_ios"></script>
+  <script src="/assets/js/app.js?v=20261020_mobile_ios"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>

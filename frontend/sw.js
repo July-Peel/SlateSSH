@@ -1,9 +1,9 @@
-const CACHE = 'slatessh-shell-20260912-m3-7';
+const CACHE = 'slatessh-shell-20261020-mobile-ios';
 const SHELL = [
   '/',
-  '/assets/css/app.css?v=20260912_m3_7',
-  '/assets/js/app.js?v=20260912_m3_7',
-  '/assets/js/pwa.js?v=20260912_m3_7',
+  '/assets/css/app.css?v=20261020_mobile_ios',
+  '/assets/js/app.js?v=20261020_mobile_ios',
+  '/assets/js/pwa.js?v=20261020_mobile_ios',
   '/assets/vendor/material-symbols/rounded.css',
   '/assets/vendor/material-symbols/material-symbols-rounded.woff2',
   '/assets/vendor/alpine/alpine.min.js',

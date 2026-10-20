@@ -1256,7 +1256,7 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background-color: #000000;
+  background-color: #2C2622;
   position: relative;
 }
 
@@ -1381,7 +1381,7 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   width: 100%;
   position: relative;
   overflow: hidden;
-  background-color: #0b0e14;
+  background-color: #2C2622;
 }
 
 .terminal-wrap {
@@ -1392,7 +1392,8 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
 .terminal-surface {
   width: 100%;
   height: 100%;
-  padding: 6px;
+  /* 给终端最后一行输出留出呼吸空间，避免命令和结果贴住面板底部 */
+  padding: 6px 6px 18px;
   box-sizing: border-box;
 }
 
@@ -1403,7 +1404,7 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   justify-content: center;
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle at center, #171b24, #0b0e14);
+  background: #2C2622;
   padding: 24px;
 }
 .m3-connecting-card {
@@ -1887,8 +1888,9 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
 #app.keyboard-open .terminal-mobile-dock {
   padding-bottom: 0px !important;
 }
+/* 键盘弹出时 dock 只剩快捷键栏（42px + 边框），按实际高度留白 */
 #app.keyboard-open .terminal-stage {
-  padding-bottom: 92px !important;
+  padding-bottom: 46px !important;
   box-sizing: border-box;
 }
 
@@ -2257,8 +2259,8 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   height: 340px;
   max-height: 52vh;
   min-height: 180px;
-  background-color: #090a0f;
-  color: #e2e8f0;
+  background-color: #2C2622;
+  color: #D8CBB5;
   font-family: var(--font-mono);
   font-size: 0.85rem;
   line-height: 1.55;
@@ -2372,4 +2374,234 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   0% { left: -40%; }
   50% { left: 40%; width: 50%; }
   100% { left: 100%; width: 20%; }
+}
+
+/* ─── 19. MOBILE / iOS SAFARI FIXES ─── */
+
+/* iOS 会在聚焦字号小于 16px 的输入框时自动放大页面，xterm 的隐藏输入框也不例外 */
+.xterm .xterm-helper-textarea {
+  font-size: 16px;
+}
+
+/* 文件选择框保持渲染（不用 display:none），iOS Safari 才能稳定弹出选择器 */
+.visually-hidden-input {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.file-item {
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.file-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+.file-meta {
+  font-size: 0.72rem;
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 编辑器标题：长文件名截断，不把保存/关闭按钮挤出屏幕 */
+.editor-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.editor-title-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+.editor-title-text strong,
+.editor-title-text small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.editor-dirty-dot {
+  margin-left: 6px;
+  color: var(--md-sys-color-primary);
+  font-size: 0.7rem;
+  vertical-align: middle;
+}
+.editor-actions {
+  flex-shrink: 0;
+}
+
+/* 上传进度 */
+.upload-progress-toast {
+  cursor: default;
+  min-width: min(320px, 90vw);
+}
+.upload-progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.upload-progress-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.upload-progress-track {
+  height: 4px;
+  border-radius: var(--m3-shape-full);
+  background-color: rgba(127, 127, 127, 0.35);
+  overflow: hidden;
+}
+.upload-progress-fill {
+  height: 100%;
+  background-color: var(--md-sys-color-primary);
+  transition: width 120ms linear;
+}
+
+.context-menu-head,
+.context-menu-cancel {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  /* 底部面板贴边显示，高度按可见视口（键盘弹出后会变小）计算，而不是 vh */
+  .mobile-modal-backdrop {
+    padding: var(--safe-top) 0 0 0 !important;
+  }
+  .mobile-term-modal,
+  .copy-viewer-dialog.mobile-term-modal,
+  .paste-box-dialog.mobile-term-modal {
+    max-height: calc(100% - 8px) !important;
+  }
+  #app.keyboard-open .mobile-term-modal {
+    padding-bottom: 16px !important;
+  }
+  .term-copy-textarea {
+    height: auto;
+    flex: 1 1 42vh;
+    min-height: 120px;
+    max-height: none;
+  }
+  .mobile-file-list {
+    flex: 1 1 auto;
+    min-height: 96px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .mobile-file-list .file-item {
+    padding: 8px 4px 8px 12px;
+    min-height: 52px;
+  }
+
+  /* 文件菜单在手机上改为底部操作面板，按钮更大更好点 */
+  .context-menu.context-menu-sheet {
+    left: 0 !important;
+    right: 0;
+    top: auto !important;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100% - var(--safe-top) - 24px);
+    overflow-y: auto;
+    border-radius: 28px 28px 0 0;
+    padding: 10px 12px calc(12px + var(--safe-bottom));
+    animation: m3SheetUp 240ms var(--m3-motion-emphasized);
+  }
+  .context-menu.context-menu-sheet button {
+    height: 48px;
+    font-size: 0.98rem;
+    gap: 14px;
+  }
+  .context-menu-sheet .context-menu-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px 12px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  }
+  .context-menu-title {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .context-menu-title strong {
+    font-size: 0.98rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .context-menu-title small {
+    font-size: 0.76rem;
+    color: var(--md-sys-color-on-surface-variant);
+  }
+  .context-menu-sheet .context-menu-cancel {
+    display: flex;
+    justify-content: center;
+    margin-top: 6px;
+    background-color: var(--md-sys-color-surface-container-high);
+    font-weight: 600;
+  }
+  .context-menu-scrim {
+    background-color: rgba(0, 0, 0, 0.45);
+  }
+
+  /* 提示条避开底部快捷键栏和导航栏 */
+  .m3-snackbar {
+    bottom: calc(42px + var(--dock-height) + var(--safe-bottom) + 12px);
+  }
+  #app.keyboard-open .m3-snackbar {
+    bottom: 54px;
+  }
+
+  /* 编辑器在手机上使用 16px，避免 iOS 聚焦时放大，并保留可读的行宽 */
+  .editor-textarea {
+    font-size: 16px;
+    line-height: 1.5;
+    padding: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .editor-head {
+    padding: 0 8px 0 12px;
+    gap: 8px;
+  }
+  .editor-title small {
+    font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 1023px) {
+  /* iOS 主屏幕 Web App 使用 black-translucent 状态栏，全屏编辑器需要避开刘海和底部横条 */
+  .editor-backdrop {
+    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left) !important;
+  }
+  #app.keyboard-open .editor-backdrop {
+    padding-bottom: 0 !important;
+  }
+
+  /* 主机启动页标题在手机上独占一行，按钮换到下一行 */
+  .launcher-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .launcher-title-group h2 {
+    white-space: nowrap;
+  }
+  .launcher-actions-top > .m3-btn {
+    flex: 1;
+  }
 }

@@ -2,7 +2,8 @@ function shadowApp() {
   const cachedAuth = localStorage.getItem('slate_auth') === 'true';
   let cachedConnections = [];
   try {
-    cachedConnections = JSON.parse(localStorage.getItem('slate_connections_cache') || '[]');
+    cachedConnections = JSON.parse(localStorage.getItem('slate_connections_cache') || '[]')
+      .map(c => ({ ...c, connecting: false }));
   } catch (_) {}
 
   return {
@@ -68,7 +69,8 @@ function shadowApp() {
     clipboard: { mode: null, entries: [] },
     uploadProgress: 0,
     uploading: false,
-    pendingPasteTarget: null,
+    uploadLabel: '',
+    downloadReady: { visible: false, name: '', file: null, url: '' },
     terminalPasteBox: { visible: false, text: '' },
     terminalCopyViewer: { visible: false, text: '' },
     editorSaveFeedback: { state: 'idle', path: '', timer: null },
@@ -239,6 +241,14 @@ function shadowApp() {
       this.$watch('isMobile', value => {
         for (const term of Object.values(this.terminals)) term.options.fontSize = value ? 13 : 14;
         this.showMobileMenu = this.showMobileTools = false;
+        // 平板旋转等场景在移动/桌面布局之间切换时，同步切换 textarea 与 Monaco。
+        if (value && window.appMonacoInstance) {
+          window.appMonacoInstance.dispose();
+          window.appMonacoInstance = null;
+          this.monacoReady = false;
+        } else if (!value && this.activeEditorTab) {
+          this.$nextTick(() => this.initMonacoEditor());
+        }
       });
       update();
     },
@@ -385,6 +395,7 @@ function shadowApp() {
 
     async init() {
       this._resizeTimer = null;
+      this._pendingOutput = {};
       this._focusTimer = null;
       this.setupViewport();
       this.applyThemeAttrs();
@@ -398,7 +409,16 @@ function shadowApp() {
         }
       });
 
-      window.addEventListener('online', () => { this.isOnline = true; });
+      window.addEventListener('online', () => {
+        this.isOnline = true;
+        this.handleAppResume();
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) this.handleAppResume();
+      });
+      window.addEventListener('pageshow', (event) => {
+        if (event.persisted) this.handleAppResume();
+      });
       window.addEventListener('offline', () => { this.isOnline = false; });
       window.addEventListener('slate:update-ready', () => { this.updateAvailable = true; });
       if (window.slatePwa?.hasUpdate) {
@@ -644,10 +664,13 @@ function shadowApp() {
       const data = await resp.json();
       this.connections = data.map(c => {
         const existing = this.connections.find(old => old.id === c.id);
-        return { ...c, connecting: existing?.connecting || false };
+        // 仅当仍有对应的会话标签时才保留“连接中”状态，避免状态残留
+        const hasTab = this.sessions.some(s => s.connectionId === c.id && !s.connected && !s.error);
+        return { ...c, connecting: !!(existing?.connecting && hasTab) };
       });
       try {
-        localStorage.setItem('slate_connections_cache', JSON.stringify(this.connections));
+        const cache = this.connections.map(({ connecting, ...rest }) => rest);
+        localStorage.setItem('slate_connections_cache', JSON.stringify(cache));
       } catch (_) {}
     },
 
@@ -766,30 +789,117 @@ function shadowApp() {
       if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve();
       if (this.socket?.readyState === WebSocket.CONNECTING && this.socketOpenPromise) return this.socketOpenPromise;
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      this.socket = new WebSocket(`${protocol}//${location.host}/ws`);
+      const socket = new WebSocket(`${protocol}//${location.host}/ws`);
+      this.socket = socket;
       this.socketOpenPromise = new Promise((resolve, reject) => {
-        this.socket.addEventListener('open', () => {
-          this.socketOpenPromise = null;
+        socket.addEventListener('open', () => {
+          if (this.socket === socket) this.socketOpenPromise = null;
           resolve();
         }, { once: true });
-        this.socket.addEventListener('error', () => {
-          this.socketOpenPromise = null;
+        socket.addEventListener('error', () => {
+          if (this.socket === socket) this.socketOpenPromise = null;
           reject(new Error('WebSocket 连接失败，请确认服务已启动。'));
         }, { once: true });
-        this.socket.addEventListener('close', () => {
-          this.socketOpenPromise = null;
+        socket.addEventListener('close', () => {
+          if (this.socket === socket) this.socketOpenPromise = null;
           reject(new Error('WebSocket 已断开，请重新连接。'));
         }, { once: true });
       });
-      this.socket.addEventListener('message', (event) => {
+      socket.addEventListener('message', (event) => {
+        if (this.socket !== socket) return;
         const message = JSON.parse(event.data);
         this.handleSocketMessage(message);
       });
-      this.socket.addEventListener('close', () => {
+      socket.addEventListener('close', () => {
+        // 已被替换的旧连接（例如 iOS 后台恢复后丢弃的僵尸连接）不再影响当前会话。
+        if (this.socket !== socket) return;
         this.socketOpenPromise = null;
-        for (const tab of this.sessions) tab.connected = false;
+        this.markSocketLost();
+        if (!document.hidden && navigator.onLine) {
+          clearTimeout(this._autoReconnectTimer);
+          this._autoReconnectTimer = setTimeout(() => this.reconnectLostSessions(), 1200);
+        }
       });
       return this.socketOpenPromise;
+    },
+
+    markSocketLost() {
+      for (const tab of this.sessions) {
+        if (tab.connected && tab.type !== 'RDP') tab.socketLost = true;
+        tab.connected = false;
+        if (tab.connecting && tab.type !== 'RDP') {
+          tab.connecting = false;
+          tab.error = 'WebSocket 已断开';
+        }
+      }
+      this.connections.forEach(c => { if (c.type !== 'RDP') c.connecting = false; });
+    },
+
+    // 发送心跳并等待 pong，用于识别 iOS 从后台恢复后“看似打开实则已断”的连接。
+    checkSocketAlive(timeout = 2500) {
+      const socket = this.socket;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.resolve(false);
+      return new Promise(resolve => {
+        const timer = setTimeout(() => {
+          this._pongResolver = null;
+          resolve(false);
+        }, timeout);
+        this._pongResolver = () => {
+          clearTimeout(timer);
+          this._pongResolver = null;
+          resolve(true);
+        };
+        try {
+          socket.send(JSON.stringify({ type: 'ping' }));
+        } catch (_) {
+          clearTimeout(timer);
+          this._pongResolver = null;
+          resolve(false);
+        }
+      });
+    },
+
+    async handleAppResume() {
+      if (document.hidden || !this.authenticated || this._resumeChecking) return;
+      this._resumeChecking = true;
+      try {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN && !(await this.checkSocketAlive())) {
+          const dead = this.socket;
+          this.socket = null;
+          this.socketOpenPromise = null;
+          this.markSocketLost();
+          try { dead.close(); } catch (_) {}
+        }
+        this.reconnectLostSessions();
+      } finally {
+        this._resumeChecking = false;
+      }
+    },
+
+    reconnectLostSessions() {
+      if (!this.authenticated || !navigator.onLine) return;
+      this.sessions
+        .filter(tab => tab.socketLost && !tab.connected && !tab.connecting)
+        .forEach(tab => this.reconnectSession(tab));
+    },
+
+    reconnectActiveSession() {
+      const tab = this.sessions.find(x => x.id === this.activeSessionId);
+      if (tab) this.reconnectSession(tab);
+    },
+
+    async reconnectSession(tab) {
+      if (!tab || tab.type === 'RDP' || tab.connecting) return;
+      const oldId = tab.id;
+      if (this.terminals[oldId]) {
+        try { this.terminals[oldId].dispose(); } catch (_) {}
+        delete this.terminals[oldId];
+        delete this.searchAddons[oldId];
+        delete this.fitAddons[oldId];
+      }
+      delete this.statuses[oldId];
+      tab.socketLost = false;
+      await this.retryConnection(tab);
     },
 
     async ensureSocket() {
@@ -817,9 +927,17 @@ function shadowApp() {
     },
 
     handleSocketMessage(message) {
+      if (message.type === 'pong') {
+        this._pongResolver?.();
+        return;
+      }
       if (message.type === 'error') {
         this.testMessage = message.payload?.message || '操作失败';
         this.testMessageType = 'error';
+        if (this.editorSaveFeedback.state === 'saving') {
+          this.setEditorSaveFeedback('idle');
+          this.editorTabs.forEach(t => { t.savingContent = null; });
+        }
         const connId = Number(message.payload?.connectionId);
         if (connId) {
           const connection = this.connections.find(c => c.id === connId);
@@ -875,24 +993,36 @@ function shadowApp() {
           this.sessions.push(tab);
           this.activeSessionId = tab.id;
         }
-        this.activePath = '.';
-        this.files = [];
-        this.pendingPasteTarget = null;
+        tab.socketLost = false;
+        this.retargetEditorTabs(tab.connectionId, tab.id);
+        if (this.activeSessionId === tab.id) {
+          this.activePath = tab.path || '.';
+          this.files = [];
+          setTimeout(() => this.refreshFiles(), 80);
+        }
         this.$nextTick(() => {
           this.mountTerminal(tab.id);
         });
-        setTimeout(() => this.refreshFiles(), 80);
       }
 
       if (message.type === 'ssh:output') {
         const term = this.terminals[message.sessionId];
-        if (!term) return;
         const data = message.payload?.data || '';
         const encoding = message.payload?.encoding;
+        let bytes = null;
         if (encoding === 'base64') {
           const binary = atob(data);
-          const bytes = new Uint8Array(binary.length);
+          bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        }
+        if (!term) {
+          // 终端在 ssh:connected 之后的下一帧才挂载，先缓存这期间到达的欢迎信息和提示符。
+          if (!this.sessions.some(x => x.id === message.sessionId)) return;
+          const queue = this._pendingOutput[message.sessionId] || (this._pendingOutput[message.sessionId] = []);
+          if (queue.length < 2000) queue.push(bytes || data);
+          return;
+        }
+        if (bytes) {
           term.write(bytes, () => {
             if (this.isMobile && this.isKeyboardOpen) {
               try { term.scrollToBottom(); } catch (_) {}
@@ -924,6 +1054,8 @@ function shadowApp() {
       if (message.type === 'sftp:readdir:result' && message.sessionId === this.activeSessionId) {
         this.activePath = message.payload?.path || '.';
         this.pathInput = this.activePath;
+        const sessionTab = this.sessions.find(x => x.id === message.sessionId);
+        if (sessionTab) sessionTab.path = this.activePath;
         this.addToPathHistory(this.activePath);
         let entries = message.payload?.entries || [];
         entries.sort((a, b) => {
@@ -937,7 +1069,18 @@ function shadowApp() {
         const savedPath = message.payload?.path || '';
         this.testMessage = `已保存 ${savedPath}`;
         this.testMessageType = 'success';
+        const savedTab = this.editorTabs.find(t => t.sessionId === message.sessionId && t.path === savedPath && t.savingContent != null);
+        if (savedTab) {
+          savedTab.savedContent = savedTab.savingContent;
+          savedTab.savingContent = null;
+        }
         this.playEditorSaveSuccess(savedPath);
+        if (message.sessionId === this.activeSessionId) this.refreshFiles();
+      }
+      if (message.type === 'sftp:copy:result') {
+        this.testMessage = `已复制到 ${message.payload?.targetPath || ''}`;
+        this.testMessageType = 'success';
+        if (message.sessionId === this.activeSessionId) this.refreshFiles();
       }
       if (message.type === 'sftp:mkdir:result') {
         this.testMessage = `已创建目录 ${message.payload?.path || ''}`;
@@ -946,23 +1089,28 @@ function shadowApp() {
       if (message.type === 'sftp:rename:result') {
         this.testMessage = `已重命名为 ${message.payload?.newPath || ''}`;
         this.testMessageType = 'success';
+        this.applyRemoteRename(message.payload?.oldPath, message.payload?.newPath);
+        if (message.sessionId === this.activeSessionId) this.refreshFiles();
       }
       if (message.type === 'sftp:unlink:result' || message.type === 'sftp:rmdir:result') {
         this.testMessage = `已删除 ${message.payload?.path || ''}`;
         this.testMessageType = 'success';
+        if (message.sessionId === this.activeSessionId) this.refreshFiles();
       }
       if (message.type === 'sftp:readfile:blocked') {
-        this.testMessage = `${message.payload?.reason || '该文件不能在页面中直接编辑'}`;
+        const reason = String(message.payload?.reason || '');
+        if (reason.includes('too large')) {
+          this.testMessage = '文件超过 1MB，无法在线编辑，请下载后查看';
+        } else if (reason.includes('binary')) {
+          this.testMessage = '二进制文件无法在线编辑，请下载后查看';
+        } else {
+          this.testMessage = reason || '该文件不能在页面中直接编辑';
+        }
         this.testMessageType = 'error';
       }
       if (message.type === 'sftp:readfile:result') {
-        if (this.pendingPasteTarget && this.pendingPasteTarget.sourcePath === message.payload?.path) {
-          this.sendSocket({ type: 'sftp:writefile', sessionId: this.activeSessionId, payload: { path: this.pendingPasteTarget.destinationPath, content: message.payload?.content || '' } });
-          this.pendingPasteTarget = null;
-          setTimeout(() => this.refreshFiles(), 200);
-          return;
-        }
-        this.openEditorTab(message.payload?.path || 'file', message.payload?.content || '');
+        this.showMobileSftp = false;
+        this.openEditorTab(message.payload?.path || 'file', message.payload?.content || '', message.sessionId);
       }
     },
 
@@ -997,7 +1145,11 @@ function shadowApp() {
       if (connection) connection.connecting = true;
       this.testMessage = `正在重新连接 ${tab.name}...`;
       this.testMessageType = 'info';
-      await this.sendSocket({ type: 'ssh:connect', payload: { connectionId: tab.connectionId } });
+      if (!(await this.sendSocket({ type: 'ssh:connect', payload: { connectionId: tab.connectionId } }))) {
+        tab.connecting = false;
+        tab.error = 'WebSocket 连接失败，请检查网络后重试';
+        if (connection) connection.connecting = false;
+      }
     },
 
     cancelConnectingSession(tab) {
@@ -1042,7 +1194,14 @@ function shadowApp() {
       this.activeSessionId = tempId;
       this.testMessage = `正在连接 ${connection.name || connection.host}...`;
       this.testMessageType = 'info';
-      await this.sendSocket({ type: 'ssh:connect', payload: { connectionId: connection.id } });
+      if (!(await this.sendSocket({ type: 'ssh:connect', payload: { connectionId: connection.id } }))) {
+        const pending = this.sessions.find(x => x.id === tempId);
+        if (pending) {
+          pending.connecting = false;
+          pending.error = 'WebSocket 连接失败，请检查网络后重试';
+        }
+        connection.connecting = false;
+      }
     },
 
     async openRdpSession(connection) {
@@ -1057,7 +1216,7 @@ function shadowApp() {
         return;
       }
       connection.connecting = true;
-      const id = crypto.randomUUID();
+      const id = this.makeId();
       const tab = { id, connectionId: connection.id, name: connection.name || connection.host || 'RDP', type: 'RDP', connected: false };
       this.sessions.push(tab);
       this.activeSessionId = id;
@@ -1130,6 +1289,13 @@ function shadowApp() {
     },
 
     activateSession(id) {
+      if (this.activeSessionId !== id) {
+        // 每个会话记住自己的远程目录，避免切换主机后去读另一台机器的路径。
+        const tab = this.sessions.find(x => x.id === id);
+        this.activePath = tab?.path || '.';
+        this.pathInput = this.activePath === '.' ? '' : this.activePath;
+        this.files = [];
+      }
       this.activeSessionId = id;
       if (this.activeSessionType() !== 'RDP') this.refreshFiles();
       if (this.rdpClients[id]) this.fitRdp(id);
@@ -1171,10 +1337,10 @@ function shadowApp() {
         delete this.fitAddons[id];
       }
       delete this.statuses[id];
-      this.pendingPasteTarget = null;
+      delete this._pendingOutput[id];
       if (this.activeSessionId === id) {
         this.activeSessionId = this.sessions[0]?.id || null;
-        this.activePath = '.';
+        this.activePath = this.sessions[0]?.path || '.';
         this.files = [];
         if (this.activeSessionId && this.activeSessionType() !== 'RDP') {
           setTimeout(() => this.refreshFiles(), 80);
@@ -1198,26 +1364,27 @@ function shadowApp() {
         fontSize: isMobileDevice ? 12 : 14, 
         fontFamily: '"Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace',
         theme: { 
-          background: '#090a0f',
-          foreground: '#e6edf3',
-          cursor: '#5af78e',
-          cursorAccent: '#090a0f',
-          black: '#090a0f',
-          red: '#ff7b72',
-          green: '#3fb950',
-          yellow: '#d29922',
-          blue: '#58a6ff',
-          magenta: '#bc8cff',
-          cyan: '#39c5cf',
-          white: '#b1bac4',
-          brightBlack: '#484f58',
-          brightRed: '#ffa198',
-          brightGreen: '#56d364',
-          brightYellow: '#e3b341',
-          brightBlue: '#79c0ff',
-          brightMagenta: '#d2a8ff',
-          brightCyan: '#56d4dd',
-          brightWhite: '#f0f6fc'
+          background: '#2C2622',
+          foreground: '#D8CBB5',
+          cursor: '#F6EFE2',
+          cursorAccent: '#2C2622',
+          selectionBackground: 'rgba(41, 138, 150, 0.4)',
+          black: '#2C2622',
+          red: '#D8473F',
+          green: '#26A06C',
+          yellow: '#C49F00',
+          blue: '#3A78B8',
+          magenta: '#B5768D',
+          cyan: '#298A96',
+          white: '#D8CBB5',
+          brightBlack: '#655A50',
+          brightRed: '#F54E42',
+          brightGreen: '#33B87D',
+          brightYellow: '#EBC400',
+          brightBlue: '#589AE8',
+          brightMagenta: '#D3869B',
+          brightCyan: '#38A8B8',
+          brightWhite: '#F6EFE2'
         }, 
         convertEol: true, 
         scrollback: 5000,
@@ -1233,6 +1400,11 @@ function shadowApp() {
       if (fit) term.loadAddon(fit);
       if (search) term.loadAddon(search);
       term.open(el);
+      const pending = this._pendingOutput[id];
+      if (pending) {
+        delete this._pendingOutput[id];
+        pending.forEach(chunk => term.write(chunk));
+      }
       setTimeout(() => this.resizeActiveTerminal(id), 30);
       setTimeout(() => term.focus(), 60);
       term.onData((data) => {
@@ -1369,9 +1541,8 @@ function shadowApp() {
         }, { passive: false });
 
         el.addEventListener('touchend', () => {
-          if (!touchMoved) {
-            setTimeout(() => term.focus(), 0);
-          }
+          // iOS 只有在用户手势回调里同步 focus 才会弹出软键盘，不能放进 setTimeout。
+          if (!touchMoved) term.focus();
         }, { passive: true });
       }
     },
@@ -1525,10 +1696,12 @@ function shadowApp() {
       const text = this.getTerminalAllText(this.activeSessionId);
       this.terminalCopyViewer.text = text || '';
       this.terminalCopyViewer.visible = true;
+      // 手机上先收起终端键盘，让文本框有足够空间长按选择。
+      if (this.isMobile) this.terminals[this.activeSessionId]?.blur();
       this.$nextTick(() => {
         const textarea = document.getElementById('terminal-copy-textarea') || document.querySelector('.term-copy-textarea');
         if (textarea) {
-          textarea.focus({ preventScroll: true });
+          if (!this.isMobile) textarea.focus({ preventScroll: true });
           textarea.scrollTop = textarea.scrollHeight;
         }
       });
@@ -1555,7 +1728,7 @@ function shadowApp() {
 
     closeTerminalCopyViewer() {
       this.terminalCopyViewer.visible = false;
-      this.refocusTerminal(true);
+      if (!this.isMobile) this.refocusTerminal(true);
     },
 
     closeTerminalPasteBox() {
@@ -1706,8 +1879,22 @@ function shadowApp() {
       this.sendSocket({ type: 'sftp:readfile', sessionId: this.activeSessionId, payload: { path: target } });
     },
 
-    openEditorTab(path, content) {
-      const existing = this.editorTabs.find(tab => tab.path === path);
+    // crypto.randomUUID 只在 HTTPS 下可用，局域网 http 访问时需要降级。
+    makeId() {
+      if (window.crypto?.randomUUID) {
+        try { return window.crypto.randomUUID(); } catch (_) {}
+      }
+      return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    },
+
+    openEditorTab(path, content, sessionId = this.activeSessionId) {
+      const session = this.sessions.find(x => x.id === sessionId);
+      const existing = this.editorTabs.find(tab => tab.path === path && tab.sessionId === sessionId);
+      if (existing && this.isEditorTabDirty(existing) && existing.content !== content &&
+          !confirm(`${existing.name} 有未保存的修改，是否丢弃修改并重新加载服务器上的内容？`)) {
+        this.activeEditorTabId = existing.id;
+        return;
+      }
       this.monacoReady = false;
       if (window.appMonacoInstance) {
         window.appMonacoInstance.dispose();
@@ -1715,16 +1902,40 @@ function shadowApp() {
       }
       if (existing) {
         existing.content = content;
+        existing.savedContent = content;
         this.activeEditorTabId = existing.id;
         this.placeEditorWindow();
         this.$nextTick(() => this.initMonacoEditor());
         return;
       }
-      const tab = { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, content };
+      const tab = {
+        id: this.makeId(),
+        path,
+        name: path.split('/').pop() || path,
+        content,
+        savedContent: content,
+        savingContent: null,
+        sessionId,
+        connectionId: session?.connectionId ?? null,
+        hostName: session?.name || ''
+      };
       this.editorTabs.push(tab);
       this.activeEditorTabId = tab.id;
       this.placeEditorWindow();
       this.$nextTick(() => this.initMonacoEditor());
+    },
+
+    isEditorTabDirty(tab) {
+      return !!tab && tab.content !== tab.savedContent;
+    },
+
+    // 会话重连后会拿到新的 sessionId，把同一主机上打开的文件指向新会话，未保存内容可继续保存。
+    retargetEditorTabs(connectionId, sessionId) {
+      if (connectionId == null) return;
+      const alive = new Set(this.sessions.filter(s => s.connected).map(s => s.id));
+      this.editorTabs.forEach(tab => {
+        if (tab.connectionId === connectionId && !alive.has(tab.sessionId)) tab.sessionId = sessionId;
+      });
     },
 
     activateEditorTab(id) {
@@ -1732,6 +1943,8 @@ function shadowApp() {
     },
 
     closeEditorTab(id) {
+      const closing = this.editorTabs.find(tab => tab.id === id);
+      if (closing && this.isEditorTabDirty(closing) && !confirm(`${closing.name} 有未保存的修改，确定关闭吗？`)) return;
       const idx = this.editorTabs.findIndex(tab => tab.id === id);
       if (idx >= 0) this.editorTabs.splice(idx, 1);
       if (this.activeEditorTabId === id) this.activeEditorTabId = this.editorTabs[0]?.id || null;
@@ -1788,6 +2001,8 @@ function shadowApp() {
     },
 
     initMonacoEditor() {
+      // 手机上使用原生 textarea：iOS 的选择、放大镜、复制粘贴菜单都可用，也不必加载 Monaco。
+      if (this.isMobile) return;
       const container = document.getElementById('monaco-editor-container');
       if (!container || !this.activeEditorTab) return;
       if (!window.require) {
@@ -1798,7 +2013,7 @@ function shadowApp() {
 
       window.require(['vs/editor/editor.main'], () => {
         const container = document.getElementById('monaco-editor-container');
-        if (!container || !this.activeEditorTab) return;
+        if (!container || !this.activeEditorTab || this.isMobile) return;
 
         if (!window.monacoThemesDefined) {
           window.monaco.editor.defineTheme('slatessh-dark', {
@@ -2064,22 +2279,33 @@ function shadowApp() {
       this.editorWindow.resizeEdge = '';
     },
 
-    saveEditor() {
+    async saveEditor() {
       const tab = this.activeEditorTab;
-      if (!tab || !this.activeSessionId) return;
+      if (!tab) return;
       if (this.editorSaveFeedback.state === 'saving') return;
-      if (window.appMonacoInstance && !this.isMonacoUpdating) {
+      // 文件必须写回打开它的那台主机，而不是当前激活的会话。
+      const session = this.sessions.find(s => s.id === tab.sessionId && s.connected);
+      if (!session) {
+        this.testMessage = `${tab.hostName || '原主机'} 的会话已断开，请重新连接后再保存（修改仍保留在编辑器中）`;
+        this.testMessageType = 'error';
+        return;
+      }
+      if (!this.isMobile && window.appMonacoInstance && !this.isMonacoUpdating) {
         try { tab.content = window.appMonacoInstance.getValue(); } catch (_) {}
       }
+      tab.savingContent = tab.content;
       this.setEditorSaveFeedback('saving', tab.path);
-      this.sendSocket({
-        type: 'sftp:writefile',
-        sessionId: this.activeSessionId,
-        payload: { path: tab.path, content: tab.content }
-      });
       this.testMessage = `正在保存 ${tab.path}`;
       this.testMessageType = 'info';
-      setTimeout(() => this.refreshFiles(), 150);
+      const sent = await this.sendSocket({
+        type: 'sftp:writefile',
+        sessionId: session.id,
+        payload: { path: tab.path, content: tab.content }
+      });
+      if (!sent) {
+        tab.savingContent = null;
+        this.setEditorSaveFeedback('idle');
+      }
     },
 
     setEditorSaveFeedback(state, path = '') {
@@ -2117,47 +2343,111 @@ function shadowApp() {
       this.setEditorSaveFeedback('saved', path || activePath);
     },
 
+    // 校验新建/重命名时输入的文件名，返回错误提示；合法时返回空字符串。
+    validateEntryName(name) {
+      if (!name || name === '.' || name === '..' || name.includes('/')) {
+        return '名称不能为空，且不能包含 "/" 或为 "." / ".."';
+      }
+      if (this.files.some(item => item.filename === name)) {
+        return `当前目录已存在 ${name}`;
+      }
+      return '';
+    },
+
     promptWriteFile() {
-      const name = prompt('文件名');
-      if (!name) return;
-      const content = '';
+      if (!this.activeSessionId) return;
+      const input = prompt('新文件名');
+      if (input === null) return;
+      const name = input.trim();
+      const error = this.validateEntryName(name);
+      if (error) {
+        this.testMessage = error;
+        this.testMessageType = 'error';
+        return;
+      }
       const target = this.joinRemotePath(this.activePath, name);
-      this.sendSocket({ type: 'sftp:writefile', sessionId: this.activeSessionId, payload: { path: target, content } });
-      setTimeout(() => this.refreshFiles(), 200);
+      this.sendSocket({ type: 'sftp:writefile', sessionId: this.activeSessionId, payload: { path: target, content: '' } });
     },
 
     promptMkdir() {
-      const name = prompt('目录名');
-      if (!name) return;
+      if (!this.activeSessionId) return;
+      const input = prompt('新目录名');
+      if (input === null) return;
+      const name = input.trim();
+      const error = this.validateEntryName(name);
+      if (error) {
+        this.testMessage = error;
+        this.testMessageType = 'error';
+        return;
+      }
       const target = this.joinRemotePath(this.activePath, name);
       this.sendSocket({ type: 'sftp:mkdir', sessionId: this.activeSessionId, payload: { path: target } });
       setTimeout(() => this.refreshFiles(), 200);
     },
 
     renameEntry(entry) {
-      const next = prompt('新名称', entry.filename);
-      if (!next || next === entry.filename) return;
+      if (!entry || !this.activeSessionId) return;
+      const input = prompt(entry.isDir ? '新的目录名' : '新的文件名', entry.filename);
+      if (input === null) return;
+      const next = input.trim();
+      if (next === entry.filename) return;
+      const error = this.validateEntryName(next);
+      if (error) {
+        this.testMessage = error;
+        this.testMessageType = 'error';
+        return;
+      }
       const oldPath = this.joinRemotePath(this.activePath, entry.filename);
       const newPath = this.joinRemotePath(this.activePath, next);
       this.sendSocket({ type: 'sftp:rename', sessionId: this.activeSessionId, payload: { oldPath, newPath } });
-      setTimeout(() => this.refreshFiles(), 200);
+    },
+
+    // 远端路径被重命名或移动后，同步已打开的编辑器标签和剪贴板中的路径。
+    applyRemoteRename(oldPath, newPath) {
+      if (!oldPath || !newPath) return;
+      const remap = path => {
+        if (path === oldPath) return newPath;
+        if (path && path.startsWith(oldPath + '/')) return newPath + path.slice(oldPath.length);
+        return path;
+      };
+      this.editorTabs.forEach(tab => {
+        const next = remap(tab.path);
+        if (next !== tab.path) {
+          tab.path = next;
+          tab.name = next.split('/').pop() || next;
+        }
+      });
+      this.clipboard.entries.forEach(item => {
+        const next = remap(item.path);
+        if (next !== item.path) {
+          item.path = next;
+          item.filename = next.split('/').pop() || next;
+        }
+      });
     },
 
     removeEntry(entry) {
-      if (!confirm(`确认删除 ${entry.filename}？`)) return;
+      if (!entry || !this.activeSessionId) return;
+      const label = entry.isDir ? `目录 ${entry.filename}（必须为空目录）` : entry.filename;
+      if (!confirm(`确认删除 ${label}？`)) return;
       const target = this.joinRemotePath(this.activePath, entry.filename);
       const type = entry.isDir ? 'sftp:rmdir' : 'sftp:unlink';
       this.sendSocket({ type, sessionId: this.activeSessionId, payload: { path: target } });
-      setTimeout(() => this.refreshFiles(), 200);
     },
 
     showContextMenu(event, entry) {
       if (event) {
-        event.preventDefault();
+        if (event.cancelable) event.preventDefault();
         event.stopPropagation();
       }
+      this.contextMenu.entry = entry;
+      // 手机上菜单以底部操作面板展示（见 CSS），无需计算坐标。
+      if (this.isMobile) {
+        this.contextMenu.visible = true;
+        return;
+      }
       const menuWidth = 175;
-      const menuHeight = 260;
+      const menuHeight = 300;
       const winW = window.innerWidth;
       const winH = window.innerHeight;
 
@@ -2189,7 +2479,6 @@ function shadowApp() {
       this.contextMenu.visible = true;
       this.contextMenu.x = Math.round(x);
       this.contextMenu.y = Math.round(y);
-      this.contextMenu.entry = entry;
     },
 
     hideContextMenu() {
@@ -2197,56 +2486,197 @@ function shadowApp() {
       this.contextMenu.entry = null;
     },
 
+    // iOS Safari 长按不会触发 contextmenu 事件，这里用 touch 计时模拟长按打开文件菜单。
+    fileTouchStart(event, entry) {
+      if (event.touches?.length !== 1) return;
+      const touch = event.touches[0];
+      this._longPress = { x: touch.clientX, y: touch.clientY, fired: false, timer: null };
+      this._longPress.timer = setTimeout(() => {
+        if (!this._longPress) return;
+        this._longPress.fired = true;
+        this.hapticFeedback();
+        this.showContextMenu(null, entry);
+      }, 480);
+    },
+
+    fileTouchMove(event) {
+      const state = this._longPress;
+      const touch = event.touches?.[0];
+      if (!state || !touch) return;
+      if (Math.abs(touch.clientX - state.x) > 8 || Math.abs(touch.clientY - state.y) > 8) {
+        clearTimeout(state.timer);
+        this._longPress = null;
+      }
+    },
+
+    fileTouchEnd(event) {
+      const state = this._longPress;
+      this._longPress = null;
+      if (!state) return;
+      clearTimeout(state.timer);
+      // 长按已经打开菜单时，阻止随后合成的 click，避免同时打开文件。
+      if (state.fired && event.cancelable) event.preventDefault();
+    },
+
     copyEntry(entry = this.contextMenu.entry) {
       if (!entry) return;
       const filePath = this.joinRemotePath(this.activePath, entry.filename);
-      this.clipboard = { mode: 'copy', entries: [{ ...entry, path: filePath }] };
+      this.clipboard = { mode: 'copy', sessionId: this.activeSessionId, entries: [{ ...entry, path: filePath }] };
+      this.testMessage = `已复制 ${entry.filename}，进入目标目录后点击「粘贴」`;
+      this.testMessageType = 'info';
       this.hideContextMenu();
     },
 
     cutEntry(entry = this.contextMenu.entry) {
       if (!entry) return;
       const filePath = this.joinRemotePath(this.activePath, entry.filename);
-      this.clipboard = { mode: 'cut', entries: [{ ...entry, path: filePath }] };
+      this.clipboard = { mode: 'cut', sessionId: this.activeSessionId, entries: [{ ...entry, path: filePath }] };
+      this.testMessage = `已剪切 ${entry.filename}，进入目标目录后点击「粘贴」`;
+      this.testMessageType = 'info';
       this.hideContextMenu();
     },
 
+    // 生成不与当前目录冲突的文件名，例如 a.txt → a copy.txt → a copy 2.txt。
+    uniqueCopyName(filename) {
+      const names = new Set(this.files.map(item => item.filename));
+      if (!names.has(filename)) return filename;
+      const dot = filename.lastIndexOf('.');
+      const hasExt = dot > 0;
+      const base = hasExt ? filename.slice(0, dot) : filename;
+      const ext = hasExt ? filename.slice(dot) : '';
+      for (let i = 1; i < 1000; i++) {
+        const candidate = `${base} copy${i > 1 ? ' ' + i : ''}${ext}`;
+        if (!names.has(candidate)) return candidate;
+      }
+      return `${base} copy ${Date.now()}${ext}`;
+    },
+
     pasteClipboard() {
-      if (!this.clipboard.mode || !this.clipboard.entries.length || !this.activeSessionId) return;
+      this.hideContextMenu();
+      if (!this.clipboard.mode || !this.clipboard.entries.length || !this.activeSessionId) {
+        this.testMessage = '剪贴板为空，请先在文件菜单中选择「复制」或「剪切」';
+        this.testMessageType = 'info';
+        return;
+      }
+      if (this.clipboard.sessionId && this.clipboard.sessionId !== this.activeSessionId) {
+        this.testMessage = '暂不支持跨主机粘贴，请在同一个会话内操作';
+        this.testMessageType = 'error';
+        return;
+      }
       const entry = this.clipboard.entries[0];
       const filename = entry.filename || entry.path.split('/').pop();
-      const destination = this.joinRemotePath(this.activePath, filename);
       if (this.clipboard.mode === 'copy') {
         if (entry.isDir) {
           this.testMessage = '当前版本暂未支持目录复制，请复制单个文件。';
           this.testMessageType = 'error';
           return;
         }
-        this.pendingPasteTarget = { sourcePath: entry.path, destinationPath: destination };
-        this.sendSocket({ type: 'sftp:readfile', sessionId: this.activeSessionId, payload: { path: entry.path } });
+        const destination = this.joinRemotePath(this.activePath, this.uniqueCopyName(filename));
+        this.sendSocket({ type: 'sftp:copy', sessionId: this.activeSessionId, payload: { sourcePath: entry.path, targetPath: destination } });
+        this.testMessage = `正在复制 ${filename}...`;
+        this.testMessageType = 'info';
       } else {
+        const destination = this.joinRemotePath(this.activePath, filename);
+        if (destination === entry.path) {
+          this.clipboard = { mode: null, entries: [] };
+          return;
+        }
+        if (this.files.some(item => item.filename === filename)) {
+          this.testMessage = `目标目录已存在 ${filename}`;
+          this.testMessageType = 'error';
+          return;
+        }
         this.sendSocket({ type: 'sftp:rename', sessionId: this.activeSessionId, payload: { oldPath: entry.path, newPath: destination } });
         this.clipboard = { mode: null, entries: [] };
       }
-      this.hideContextMenu();
-      setTimeout(() => this.refreshFiles(), 250);
     },
 
-    downloadEntry(entry) {
-      if (!this.activeSessionId) return;
+    isIOS() {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    },
+
+    downloadUrl(sessionId, filePath) {
+      return `/api/v1/files/download?sessionId=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(filePath)}`;
+    },
+
+    async downloadEntry(entry) {
+      if (!this.activeSessionId || !entry) return;
       const filePath = this.joinRemotePath(this.activePath, entry.filename);
-      const url = `/api/v1/files/download?sessionId=${encodeURIComponent(this.activeSessionId)}&path=${encodeURIComponent(filePath)}`;
+      const url = this.downloadUrl(this.activeSessionId, filePath);
+      // iOS 主屏幕 Web App（standalone）里直接导航到附件经常没有反应，
+      // 改为先取回文件，再让用户点一次按钮调起系统分享面板「存储到文件」。
+      const maxShareBytes = 200 * 1024 * 1024;
+      if (this.isIOS() && this.isStandalone && navigator.canShare && (entry.size || 0) <= maxShareBytes) {
+        await this.prepareShareDownload(url, entry.filename);
+        return;
+      }
       this.testMessage = `正在下载 ${entry.filename}...`;
       this.testMessageType = 'info';
       const anchor = document.createElement('a');
       anchor.href = url;
       anchor.download = entry.filename;
+      anchor.rel = 'noopener';
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
     },
 
+    async prepareShareDownload(url, filename) {
+      this.testMessage = `正在准备 ${filename}...`;
+      this.testMessageType = 'info';
+      try {
+        const resp = await fetch(url, { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error((await resp.text()).trim() || `下载失败 (${resp.status})`);
+        const blob = await resp.blob();
+        const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+        this.closeDownloadReady();
+        this.downloadReady = { visible: true, name: filename, file, url: URL.createObjectURL(blob) };
+        this.testMessage = '';
+      } catch (error) {
+        this.testMessage = error.message || '下载失败';
+        this.testMessageType = 'error';
+      }
+    },
+
+    async shareDownloadReady() {
+      const { file, url, name } = this.downloadReady;
+      if (!file) return;
+      try {
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: name });
+          this.closeDownloadReady();
+          return;
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+      // 不支持分享文件时退回到 blob 链接下载。
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    },
+
+    closeDownloadReady() {
+      if (this.downloadReady.url) {
+        try { URL.revokeObjectURL(this.downloadReady.url); } catch (_) {}
+      }
+      this.downloadReady = { visible: false, name: '', file: null, url: '' };
+    },
+
     triggerUpload() {
+      if (!this.activeSessionId) {
+        this.testMessage = '请先连接 SSH 会话。';
+        this.testMessageType = 'error';
+        return;
+      }
+      if (this.uploading) {
+        this.testMessage = '正在上传，请稍候...';
+        this.testMessageType = 'info';
+        return;
+      }
       this.$refs.uploadInput?.click();
     },
 
@@ -2257,33 +2687,59 @@ function shadowApp() {
       return `${String(base).replace(/\/$/, '')}/${cleanName}`;
     },
 
+    uploadOneFile(file, sessionId, path) {
+      return new Promise((resolve, reject) => {
+        const form = new FormData();
+        form.append('sessionId', sessionId);
+        form.append('path', path);
+        form.append('file', file);
+        // 用 XHR 才能拿到上传进度，手机上传大照片/视频时能看到进展。
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/v1/files/upload');
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) this.uploadProgress = Math.round((e.loaded / e.total) * 100);
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve(JSON.parse(xhr.responseText)); } catch (_) { resolve({}); }
+          } else {
+            reject(new Error((xhr.responseText || '').trim() || `上传失败 (${xhr.status})`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('上传失败，请检查网络连接'));
+        xhr.send(form);
+      });
+    },
+
     async handleFileUpload(event) {
       const input = event.target;
-      const file = input.files?.[0];
-      if (!file || !this.activeSessionId) return;
-      const form = new FormData();
-      form.append('file', file);
-      form.append('sessionId', this.activeSessionId);
-      form.append('path', this.activePath || '.');
+      const selected = Array.from(input.files || []);
+      input.value = '';
+      const sessionId = this.activeSessionId;
+      const path = this.activePath || '.';
+      if (!selected.length || !sessionId) return;
+      const existing = new Set(this.files.map(item => item.filename));
+      const conflicts = selected.filter(file => existing.has(file.name)).map(file => file.name);
+      if (conflicts.length && !confirm(`以下文件已存在，将被覆盖：\n${conflicts.join('\n')}\n\n确定继续上传？`)) return;
       this.uploading = true;
-      this.uploadProgress = 15;
-      this.testMessage = `正在上传 ${file.name}...`;
-      this.testMessageType = 'info';
+      let done = 0;
       try {
-        const resp = await fetch('/api/v1/files/upload', { method: 'POST', body: form });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.message || '上传失败');
-        this.uploadProgress = 100;
-        this.testMessage = `上传完成 ${data.path}`;
+        for (const file of selected) {
+          this.uploadProgress = 0;
+          this.uploadLabel = selected.length > 1 ? `${file.name} (${done + 1}/${selected.length})` : file.name;
+          await this.uploadOneFile(file, sessionId, path);
+          done++;
+        }
+        this.testMessage = selected.length > 1 ? `已上传 ${done} 个文件` : `上传完成 ${selected[0].name}`;
         this.testMessageType = 'success';
-        setTimeout(() => this.refreshFiles(), 200);
       } catch (error) {
-        this.testMessage = error.message || '上传失败';
+        this.testMessage = `${error.message || '上传失败'}${done ? `（已完成 ${done} 个）` : ''}`;
         this.testMessageType = 'error';
       } finally {
         this.uploading = false;
-        input.value = '';
-        setTimeout(() => { this.uploadProgress = 0; }, 400);
+        this.uploadProgress = 0;
+        this.uploadLabel = '';
+        if (this.activeSessionId === sessionId) this.refreshFiles();
       }
     },
 
