@@ -8,9 +8,9 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="SlateSSH">
   <meta name="color-scheme" content="dark light">
-  <meta name="description" content="SlateSSH · Material 3 Expressive 随身终端与远程文件工作台">
+  <meta name="description" content="SlateSSH · 随身终端与远程文件工作台">
   <meta name="theme-color" content="#10131a">
-  <title>SlateSSH · Material 3 Expressive Terminal</title>
+  <title>SlateSSH · 远程终端工作台</title>
   <link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/assets/icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="icon" href="/assets/icons/favicon-16.png" type="image/png" sizes="16x16">
@@ -19,12 +19,12 @@
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20261020_mobile_ios">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20261026_interface_text">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" class="app" :class="{ 'keyboard-open': isKeyboardOpen, 'theme-dark': colorMode === 'dark', 'theme-light': colorMode === 'light' }" x-cloak>
     
-    <!-- Material 3 Top App Bar -->
+    <!-- Top App Bar -->
     <header class="app-chrome" x-show="authenticated">
       <a class="app-brand" href="/" @click.prevent="authenticated && sessions.length ? openMobilePanel('hosts') : null" aria-label="SlateSSH 主页">
         <div class="app-brand-logo">
@@ -32,7 +32,7 @@
         </div>
         <div class="brand-title">
           <span class="brand-name">SlateSSH</span>
-          <span class="brand-subtitle" x-text="sessions.length ? (activeSessionType() + ' 会话 · ' + sessions.length + ' 个活动') : 'Material 3 工作台'"></span>
+          <span class="brand-subtitle" x-text="sessions.length ? (activeSessionType() + ' 会话 · ' + sessions.length + ' 个活动') : '工作台'"></span>
         </div>
       </a>
       <div class="chrome-actions">
@@ -90,13 +90,13 @@
       </section>
     </div>
 
-    <!-- Material 3 Theme & Palette Picker Modal -->
+    <!-- Theme & Palette Picker Modal -->
     <div class="modal-backdrop" x-show="showThemePicker" @click.self="showThemePicker = false" x-effect="syncDialog($el, showThemePicker)" role="dialog" aria-modal="true" aria-label="选择主题与外观">
       <section class="m3-dialog">
         <div class="modal-head">
           <div style="display:flex;align-items:center;gap:10px;">
             <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">palette</span>
-            <span class="modal-title">Material 3 外观风格</span>
+            <span class="modal-title">外观设置</span>
           </div>
           <button class="m3-icon-btn" @click="showThemePicker = false" aria-label="关闭">
             <span class="material-symbols-rounded">close</span>
@@ -104,7 +104,7 @@
         </div>
 
         <div style="font-size:0.9rem;font-weight:600;color:var(--md-sys-color-on-surface-variant);margin-bottom:8px;">
-          选择 Expressive 动态配色（至少 7 种 Google 风格主题）
+          选择主题配色
         </div>
 
         <div class="theme-picker-grid">
@@ -193,7 +193,7 @@
       </main>
     </template>
 
-    <!-- Material 3 Expressive Login Screen (Google Account Card Style) -->
+    <!-- Login Screen -->
     <template x-if="!booting && !needsSetup && !authenticated">
       <main class="auth-page" @click="focusLoginInput(true)">
         <section class="m3-auth-card auth-console" aria-labelledby="login-title">
@@ -202,7 +202,7 @@
               <span class="material-symbols-rounded">lock</span>
             </div>
             <h1 id="login-title" class="auth-title">登录 SlateSSH</h1>
-            <p class="auth-subtitle">基于 Material 3 Expressive 的随身安全终端</p>
+            <p class="auth-subtitle">随身安全终端</p>
           </div>
 
           <div class="m3-error-banner term-tty-error" x-show="error" role="alert">
@@ -283,7 +283,7 @@
     <template x-if="authenticated">
       <div class="workspace-root">
 
-        <!-- 1. INITIAL STATE: Material 3 Host Launcher when no active session -->
+        <!-- 1. INITIAL STATE: Host Launcher when no active session -->
         <template x-if="!sessions.length">
           <div class="centered-launcher-wrap">
             
@@ -318,7 +318,7 @@
               </div>
             </div>
 
-            <!-- Material 3 Expressive Host Cards Grid -->
+            <!-- Host Cards Grid -->
             <div class="launcher-cards-grid launcher-list-wrap">
               <template x-for="(connection, idx) in filteredConnections" :key="connection.id">
                 <div class="m3-host-card launcher-row" @click="openSession(connection)">
@@ -381,7 +381,7 @@
           </div>
         </template>
 
-        <!-- 2. ACTIVE STATE: Material 3 Multi-Panel / Responsive Stage -->
+        <!-- 2. ACTIVE STATE: Multi-Panel / Responsive Stage -->
         <template x-if="sessions.length > 0">
           <div class="main-grid" :class="{ 'sidebar-hidden': !showSidebar, 'utilities-hidden': !(showSftpWidget || showStatusWidget) }">
             
@@ -545,7 +545,7 @@
                 <template x-for="tab in sessions" :key="tab.id + '-terminal'">
                   <div x-show="activeSessionId === tab.id" class="terminal-wrap">
                     
-                    <!-- Material 3 Connecting Progress Card -->
+                    <!-- Connecting Progress Card -->
                     <template x-if="tab.connecting || tab.error">
                       <div class="terminal-connecting-screen">
                         <div class="m3-connecting-card">
@@ -1360,7 +1360,7 @@
       <span style="font-variant-numeric:tabular-nums;" x-text="uploadProgress + '%'"></span>
     </div>
 
-    <!-- Global Material 3 Snackbar Toast -->
+    <!-- Global Snackbar Toast -->
     <div class="m3-snackbar" x-show="testMessage" x-transition @click="testMessage = ''">
       <span class="material-symbols-rounded" :style="testMessageType === 'success' ? 'color:#34a853;' : (testMessageType === 'error' ? 'color:var(--md-sys-color-error);' : 'color:var(--md-sys-color-primary);')" x-text="testMessageType === 'success' ? 'check_circle' : (testMessageType === 'error' ? 'error' : 'info')"></span>
       <span x-text="testMessage"></span>
@@ -1378,8 +1378,8 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/pwa.js?v=20261020_mobile_ios"></script>
-  <script src="/assets/js/app.js?v=20261020_mobile_ios"></script>
+  <script src="/assets/js/pwa.js?v=20261026_interface_text"></script>
+  <script src="/assets/js/app.js?v=20261026_interface_text"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>
