@@ -400,6 +400,20 @@ function shadowApp() {
       this.setupViewport();
       this.applyThemeAttrs();
 
+      // Keep the app state in sync when the browser exits fullscreen with Esc,
+      // the browser menu, or another document-level fullscreen request.
+      const syncFullscreenState = () => {
+        const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+        const fullscreen = !!fullscreenElement;
+        if (this.isFullscreen === fullscreen) return;
+        this.isFullscreen = fullscreen;
+        document.body.classList.toggle('terminal-web-fullscreen', fullscreen);
+        this.refreshActiveViewport();
+      };
+      document.addEventListener('fullscreenchange', syncFullscreenState);
+      document.addEventListener('webkitfullscreenchange', syncFullscreenState);
+      document.addEventListener('MSFullscreenChange', syncFullscreenState);
+
       this.$watch('testMessage', (val) => {
         if (val) {
           clearTimeout(this._toastTimer);
@@ -1349,6 +1363,11 @@ function shadowApp() {
       if (!this.activeSessionId) {
         this.isFullscreen = false;
         document.body.classList.remove('terminal-web-fullscreen');
+        const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+        const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+        if (fullscreenElement && exitFullscreen) {
+          try { exitFullscreen.call(document)?.catch?.(() => {}); } catch (_) {}
+        }
       }
       if (this.terminalCopyViewer.visible && this.activeSessionId !== id) this.closeTerminalCopyViewer();
     },
@@ -1548,8 +1567,24 @@ function shadowApp() {
     },
 
     toggleFullscreen() {
-      this.isFullscreen = !this.isFullscreen;
-      document.body.classList.toggle('terminal-web-fullscreen', this.isFullscreen);
+      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+      const entering = !this.isFullscreen && !fullscreenElement;
+      this.isFullscreen = entering;
+      document.body.classList.toggle('terminal-web-fullscreen', entering);
+
+      if (entering) {
+        const root = document.documentElement;
+        const requestFullscreen = root.requestFullscreen || root.webkitRequestFullscreen || root.msRequestFullscreen;
+        if (requestFullscreen) {
+          try { requestFullscreen.call(root)?.catch?.(() => {}); } catch (_) {}
+        }
+      } else if (fullscreenElement) {
+        const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+        if (exitFullscreen) {
+          try { exitFullscreen.call(document)?.catch?.(() => {}); } catch (_) {}
+        }
+      }
+
       this.$nextTick(() => {
         if (!this.activeSessionId) return;
         if (this.activeSessionType() === 'RDP') {
