@@ -71,7 +71,7 @@ function shadowApp() {
     uploading: false,
     uploadLabel: '',
     downloadReady: { visible: false, name: '', file: null, url: '' },
-    terminalPasteBox: { visible: false, text: '' },
+    terminalPasteBox: { visible: false, text: '', rdpSessionId: null, sending: false, error: '' },
     terminalCopyViewer: { visible: false, text: '' },
     editorSaveFeedback: { state: 'idle', path: '', timer: null },
     loginStep: 'username', // 'username' | 'password'
@@ -274,6 +274,10 @@ function shadowApp() {
     activeSessionType() {
       if (!this.activeSessionId) return '';
       return this.sessions.find(tab => tab.id === this.activeSessionId)?.type || '';
+    },
+
+    canPasteRdp(id = this.activeSessionId) {
+      return !!this.rdpClients[id] && this.sessions.some(tab => tab.id === id && tab.type === 'RDP' && tab.connected);
     },
 
     isConnectionActive(connection) {
@@ -1232,8 +1236,8 @@ function shadowApp() {
       }
       connection.connecting = true;
       const id = this.makeId();
-      const tab = { id, connectionId: connection.id, name: connection.name || connection.host || 'RDP', type: 'RDP', connected: false };
-      this.sessions.push(tab);
+      this.sessions.push({ id, connectionId: connection.id, name: connection.name || connection.host || 'RDP', type: 'RDP', connected: false });
+      const tab = this.sessions[this.sessions.length - 1];
       this.activeSessionId = id;
       this.files = [];
       this.activePath = '.';
@@ -1266,11 +1270,14 @@ function shadowApp() {
         this._rdpObservers[id].observe(el);
       }
       client.onstatechange = (state) => {
-        tab.connected = state === Guacamole.Client.State.CONNECTED || state === Guacamole.Client.State.WAITING;
-        if (state === Guacamole.Client.State.CONNECTED) {
+        tab.connected = state === Guacamole.Client.State.CONNECTED;
+        if (tab.connected) {
           connection.connecting = false;
           this.testMessage = `RDP 桌面已连接：${tab.name}`;
           this.testMessageType = 'success';
+          if (this.activeSessionId === id && !document.activeElement?.closest('.modal-backdrop, input, textarea, [contenteditable]')) {
+            el.focus({ preventScroll: true });
+          }
           setTimeout(() => this.fitRdp(id), 50);
         }
         if (state === Guacamole.Client.State.DISCONNECTED) {
@@ -1291,7 +1298,7 @@ function shadowApp() {
       // 鼠标挂在远程画面元素上，并按显示缩放比例换算坐标，画面缩放或居中时点击位置才准确。
       const mouse = new Guacamole.Mouse(display);
       mouse.onmousedown = mouse.onmouseup = mouse.onmousemove = (mouseState) => client.sendMouseState(mouseState, true);
-      const keyboard = new Guacamole.Keyboard(document);
+      const keyboard = new Guacamole.Keyboard(el);
       keyboard.onkeydown = (keysym) => {
         if (this.activeSessionId !== id) return true;
         client.sendKeyEvent(1, keysym);
@@ -1304,7 +1311,8 @@ function shadowApp() {
       };
       this.rdpKeyboards[id] = keyboard;
       el.tabIndex = 0;
-      el.addEventListener('click', () => el.focus());
+      el.addEventListener('click', () => el.focus({ preventScroll: true }));
+      el.addEventListener('blur', () => keyboard.reset());
       client.connect();
       setTimeout(() => this.fitRdp(id), 100);
     },
@@ -1319,7 +1327,12 @@ function shadowApp() {
       }
       this.activeSessionId = id;
       if (this.activeSessionType() !== 'RDP') this.refreshFiles();
-      if (this.rdpClients[id]) this.fitRdp(id);
+      if (this.rdpClients[id]) {
+        this.$nextTick(() => {
+          this.fitRdp(id);
+          if (this.activeSessionId === id) document.getElementById(`rdp-${id}`)?.focus({ preventScroll: true });
+        });
+      }
       if (this.terminals[id]) {
         this.$nextTick(() => {
           setTimeout(() => {
@@ -1331,6 +1344,7 @@ function shadowApp() {
     },
 
     closeTab(id, notify = true) {
+      if (this.terminalPasteBox.rdpSessionId === id) this.closeTerminalPasteBox();
       const idx = this.sessions.findIndex(x => x.id === id);
       if (idx >= 0) {
         const tab = this.sessions[idx];
@@ -1757,34 +1771,81 @@ function shadowApp() {
     },
 
     closeTerminalPasteBox() {
-      this.terminalPasteBox.visible = false;
-      this.terminalPasteBox.text = '';
+      const { rdpSessionId } = this.terminalPasteBox;
+      this.terminalPasteBox = { visible: false, text: '', rdpSessionId: null, sending: false, error: '' };
       this.$nextTick(() => {
-        this.refocusTerminal(true);
+        if (rdpSessionId) {
+          if (this.activeSessionId === rdpSessionId) document.getElementById(`rdp-${rdpSessionId}`)?.focus({ preventScroll: true });
+        } else {
+          this.refocusTerminal(true);
+        }
       });
     },
 
     openTerminalPasteBox() {
-      this.terminalPasteBox.text = '';
-      this.terminalPasteBox.visible = true;
+      const rdpSessionId = this.activeSessionType() === 'RDP' ? this.activeSessionId : null;
+      if (rdpSessionId && !this.canPasteRdp(rdpSessionId)) return;
+      this.terminalPasteBox = { visible: true, text: '', rdpSessionId, sending: false, error: '' };
       this.$nextTick(() => {
-        const input = document.querySelector('.terminal-paste-popover textarea');
-        input?.focus?.();
-        setTimeout(() => input?.focus?.(), 80);
+        setTimeout(() => {
+          if (this.terminalPasteBox.visible) this.$refs.terminalPasteInput?.focus({ preventScroll: true });
+        }, 0);
       });
     },
 
-    async sendTerminalPasteText() {
-      const text = this.terminalPasteBox.text;
+    sendTerminalPasteText() {
+      const { text, rdpSessionId } = this.terminalPasteBox;
+      if (rdpSessionId) return this.pasteRdpText();
       const targetSessionId = this.activeSessionId;
-      this.terminalPasteBox.visible = false;
-      this.terminalPasteBox.text = '';
       if (text && targetSessionId) {
         this.pasteTextToSession(targetSessionId, text);
       }
-      this.$nextTick(() => {
-        this.refocusTerminal(true);
-      });
+      this.closeTerminalPasteBox();
+    },
+
+    async pasteRdpText() {
+      const box = this.terminalPasteBox;
+      const id = box.rdpSessionId;
+      if (!box.text || box.sending) return;
+      if (this.activeSessionId !== id || !this.canPasteRdp(id)) {
+        box.error = '原 RDP 会话已断开或不再处于活动状态。';
+        return;
+      }
+      const text = box.text.replace(/\r\n|\r|\n/g, '\r\n');
+      const data = new TextEncoder().encode(text);
+      // guacd 的原始剪贴板和转换后的 UTF-16 缓冲区都是 256 KiB，需预留结束符。
+      const clipboardLimit = 256 * 1024;
+      if (text.includes('\0') || data.byteLength + 1 > clipboardLimit || (text.length + 1) * 2 > clipboardLimit) {
+        box.error = '文本超出 RDP 剪贴板容量或包含空字符。';
+        return;
+      }
+
+      const client = this.rdpClients[id];
+      box.error = '';
+      box.sending = true;
+      try {
+        const writer = new Guacamole.ArrayBufferWriter(client.createClipboardStream('text/plain'));
+        writer.sendData(data);
+        writer.sendEnd();
+        // guacd 在流结束后通知 Windows，剪贴板协议没有提供浏览器可见的就绪回执。
+        await new Promise(resolve => setTimeout(resolve, 250));
+        if (this.terminalPasteBox !== box) return;
+        if (this.activeSessionId !== id || this.rdpClients[id] !== client || !this.canPasteRdp(id)) {
+          box.error = '原 RDP 会话已断开或不再处于活动状态。';
+          return;
+        }
+        const controlLeft = 0xffe3;
+        const keyV = 0x76;
+        client.sendKeyEvent(1, controlLeft);
+        client.sendKeyEvent(1, keyV);
+        client.sendKeyEvent(0, keyV);
+        client.sendKeyEvent(0, controlLeft);
+        this.closeTerminalPasteBox();
+      } catch (_) {
+        box.error = '发送 RDP 剪贴板文本失败。';
+      } finally {
+        box.sending = false;
+      }
     },
 
     async refreshFiles() {

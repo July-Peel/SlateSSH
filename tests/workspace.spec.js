@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 const hosts = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: i ? `staging-${i}` : 'production-api-with-a-long-name', host: i ? `10.0.0.${i}` : 'long-hostname.internal.example.com', port: 22, username: 'deploy', type: 'SSH' }));
 
-async function mockApi(page, authenticated = true) {
+async function mockApi(page, authenticated = true, connections = hosts) {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/**', route => {
@@ -10,7 +10,7 @@ async function mockApi(page, authenticated = true) {
     let data = {};
     if (url.endsWith('needs-setup')) data = { needsSetup: false };
     else if (url.endsWith('/status')) data = { isAuthenticated: authenticated, user: { username: 'test' } };
-    else if (url.endsWith('/connections')) data = hosts;
+    else if (url.endsWith('/connections')) data = connections;
     else if (url.endsWith('/login')) data = { user: { username: 'test' } };
     return route.fulfill({ json: data });
   });
@@ -120,6 +120,71 @@ test('terminal tools, real control bytes, repeated taps and fullscreen dock', as
   await page.getByLabel('待粘贴的命令').fill('echo hello');
   await page.getByRole('button', { name: '[ Send to PTY ]', exact: true }).click();
   await expect.poll(() => inputs.some(input => input.includes('echo hello'))).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('RDP paste keeps dialog keystrokes local and sends UTF-8 before Ctrl+V', async ({ page }, info) => {
+  const errors = await mockApi(page, true, [{ ...hosts[0], name: 'Windows desktop', type: 'RDP', port: 3389 }]);
+  await mockSsh(page);
+  const instructions = [];
+  let tunnel;
+  await page.routeWebSocket('**/rdp/*/tunnel?*', ws => {
+    tunnel = ws;
+    ws.onMessage(raw => {
+      const fields = raw.slice(0, -1).split(',').map(field => field.slice(field.indexOf('.') + 1));
+      if (['clipboard', 'blob', 'end', 'key'].includes(fields[0])) instructions.push(fields);
+    });
+    ws.send('0.,8.$test-id;');
+  });
+
+  await page.goto('/');
+  await page.locator('.launcher-row .primary').click();
+  await expect(page.locator('.rdp-surface')).toBeVisible();
+  const mobile = info.project.name.includes('phone');
+  if (mobile) await page.getByRole('button', { name: '工具与外观', exact: true }).click();
+  const pasteButton = page.getByRole('button', { name: /粘贴文本/ });
+  await expect(pasteButton).toBeDisabled();
+  await expect.poll(() => !!tunnel).toBe(true);
+  tunnel.send('4.sync,1.1;');
+  await expect(pasteButton).toBeEnabled();
+  await pasteButton.click();
+
+  const dialog = page.getByRole('dialog', { name: '粘贴文本', exact: true });
+  const input = dialog.getByRole('textbox');
+  const submit = dialog.getByRole('button', { name: '粘贴', exact: true });
+  await expect(input).toBeFocused();
+  await expect(submit).toBeDisabled();
+  await page.keyboard.type('local draft');
+  await expect(input).toHaveValue('local draft');
+  await dialog.getByRole('button', { name: '取消' }).click();
+  await expect(dialog).toBeHidden();
+  expect(instructions).toEqual([]);
+
+  if (mobile) {
+    await page.getByRole('button', { name: '工具与外观', exact: true }).click();
+    await page.getByRole('button', { name: /全屏终端/ }).click();
+  } else {
+    await page.getByTitle('网页内全屏', { exact: true }).click();
+  }
+  await page.locator('.term-fullscreen-controls').getByRole('button', { name: '粘贴文本' }).click();
+  await expect(input).toHaveValue('');
+  const text = `  第一行 🌍\n${'a'.repeat(6100)}\n`;
+  await input.fill(text);
+  await submit.click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('.rdp-surface')).toBeFocused();
+
+  await expect.poll(() => instructions.map(([opcode]) => opcode)).toEqual([
+    'clipboard', 'blob', 'blob', 'end', 'key', 'key', 'key', 'key'
+  ]);
+  const [[, stream, mime], ...messages] = instructions;
+  expect(mime).toBe('text/plain');
+  const blobs = messages.slice(0, 2);
+  expect(blobs.map(([, index]) => index)).toEqual([stream, stream]);
+  expect(Buffer.concat(blobs.map(([, , data]) => Buffer.from(data, 'base64'))).toString('utf8')).toBe(text.replace(/\n/g, '\r\n'));
+  expect(messages.slice(2)).toEqual([
+    ['end', stream], ['key', '65507', '1'], ['key', '118', '1'], ['key', '118', '0'], ['key', '65507', '0']
+  ]);
   expect(errors).toEqual([]);
 });
 

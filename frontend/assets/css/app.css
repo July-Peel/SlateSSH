@@ -2328,12 +2328,16 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   }
 }
 
-/* Fullscreen Terminal overlay button */
-.term-fullscreen-exit-btn {
+/* Fullscreen terminal controls */
+.term-fullscreen-controls {
   position: absolute;
   top: 14px;
   right: 14px;
   z-index: 50;
+  display: flex;
+  gap: 8px;
+}
+.term-fullscreen-button {
   height: 36px;
   padding: 0 16px;
   border-radius: var(--m3-shape-full);
@@ -2348,9 +2352,13 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   opacity: 0.55;
   transition: opacity var(--m3-duration-short) ease;
 }
-.term-fullscreen-exit-btn:hover,
-.term-fullscreen-exit-btn:focus-visible {
+.term-fullscreen-button:hover:not(:disabled),
+.term-fullscreen-button:focus-visible {
   opacity: 1;
+}
+.term-fullscreen-button:disabled {
+  cursor: default;
+  opacity: 0.35;
 }
 
 /* 网页内全屏：终端/RDP 铺满整个网页区域（不调用浏览器全屏 API，地址栏和标签栏保持可见）。
@@ -2370,9 +2378,11 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
     z-index: 75;
     padding-top: var(--safe-top);
   }
-  .terminal-stage.fullscreen .term-fullscreen-exit-btn {
+  .term-fullscreen-controls {
     top: calc(var(--safe-top) + 8px);
     right: 8px;
+  }
+  .term-fullscreen-button {
     height: 32px;
     padding: 0 12px;
     font-size: 0.82rem;
