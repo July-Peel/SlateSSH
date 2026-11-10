@@ -19,7 +19,7 @@
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20261110_web_fullscreen">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20261110_rdp_fit">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" class="app" :class="{ 'keyboard-open': isKeyboardOpen, 'theme-dark': colorMode === 'dark', 'theme-light': colorMode === 'light' }" x-cloak>
@@ -490,27 +490,27 @@
 
               <!-- Terminal Toolbar (Desktop) -->
               <div class="terminal-commandbar" x-show="activeSessionId && !isMobile">
-                <button class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.82rem;" @click="openTerminalCopyViewer()">
+                <button x-show="activeSessionType() !== 'RDP'" class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.82rem;" @click="openTerminalCopyViewer()">
                   <span class="material-symbols-rounded" style="font-size:18px;">content_copy</span>
                   <span>复制输出</span>
                 </button>
-                <button class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.82rem;" @click="openTerminalPasteBox()">
+                <button x-show="activeSessionType() !== 'RDP'" class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.82rem;" @click="openTerminalPasteBox()">
                   <span class="material-symbols-rounded" style="font-size:18px;">content_paste</span>
                   <span>粘贴命令</span>
                 </button>
-                <button class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.82rem;" @click="clearActiveTerminal()">
+                <button x-show="activeSessionType() !== 'RDP'" class="m3-btn m3-btn-tonal" style="height:32px;padding:0 12px;font-size:0.82rem;" @click="clearActiveTerminal()">
                   <span class="material-symbols-rounded" style="font-size:18px;">delete_sweep</span>
                   <span>清屏</span>
                 </button>
                 
-                <div class="terminal-search-box">
+                <div x-show="activeSessionType() !== 'RDP'" class="terminal-search-box">
                   <span class="material-symbols-rounded" style="font-size:16px;">search</span>
                   <input x-model="terminalSearch" @keydown.enter="searchTerminal()" placeholder="在终端缓冲区中搜索..." class="term-input">
                 </div>
-                <button class="m3-icon-btn" style="width:32px;height:32px;" @click="findPreviousTerminalResult()" title="上一个结果">
+                <button x-show="activeSessionType() !== 'RDP'" class="m3-icon-btn" style="width:32px;height:32px;" @click="findPreviousTerminalResult()" title="上一个结果">
                   <span class="material-symbols-rounded" style="font-size:18px;">arrow_upward</span>
                 </button>
-                <button class="m3-icon-btn" style="width:32px;height:32px;" @click="findNextTerminalResult()" title="下一个结果">
+                <button x-show="activeSessionType() !== 'RDP'" class="m3-icon-btn" style="width:32px;height:32px;" @click="findNextTerminalResult()" title="下一个结果">
                   <span class="material-symbols-rounded" style="font-size:18px;">arrow_downward</span>
                 </button>
 
@@ -533,7 +533,7 @@
               </div>
 
               <!-- Terminal viewport stage -->
-              <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
+              <div class="terminal-stage" :class="{ fullscreen: isFullscreen, 'is-rdp': activeSessionType() === 'RDP' }">
                 <!-- Floating Exit Fullscreen Button -->
                 <button x-show="isFullscreen" @click="toggleFullscreen()" class="term-fullscreen-exit-btn" :title="activeSessionType() === 'RDP' ? '退出网页全屏 (ESC)' : '退出网页全屏（终端内的 ESC 会发送给远程程序）'">
                   <span class="material-symbols-rounded">fullscreen_exit</span>
@@ -1378,8 +1378,8 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/pwa.js?v=20261110_web_fullscreen"></script>
-  <script src="/assets/js/app.js?v=20261110_web_fullscreen"></script>
+  <script src="/assets/js/pwa.js?v=20261110_rdp_fit"></script>
+  <script src="/assets/js/app.js?v=20261110_rdp_fit"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>

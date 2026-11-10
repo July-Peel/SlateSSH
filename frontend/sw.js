@@ -1,9 +1,9 @@
-const CACHE = 'slatessh-shell-20261110-web-fullscreen';
+const CACHE = 'slatessh-shell-20261110-rdp-fit';
 const SHELL = [
   '/',
-  '/assets/css/app.css?v=20261110_web_fullscreen',
-  '/assets/js/app.js?v=20261110_web_fullscreen',
-  '/assets/js/pwa.js?v=20261110_web_fullscreen',
+  '/assets/css/app.css?v=20261110_rdp_fit',
+  '/assets/js/app.js?v=20261110_rdp_fit',
+  '/assets/js/pwa.js?v=20261110_rdp_fit',
   '/assets/vendor/material-symbols/rounded.css',
   '/assets/vendor/material-symbols/material-symbols-rounded.woff2',
   '/assets/vendor/alpine/alpine.min.js',

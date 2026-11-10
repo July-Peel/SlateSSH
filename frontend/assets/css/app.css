@@ -2635,3 +2635,29 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
     flex: 1;
   }
 }
+
+/* ─── 20. RDP 远程桌面 ─── */
+/* 显示区固定铺满终端面板（不能由远程画面撑开高度），画面按比例缩放后居中 */
+.rdp-surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #000;
+  outline: none;
+}
+.rdp-surface > div {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1023px) {
+  /* RDP 没有终端快捷键栏，只为底部导航留位置 */
+  .terminal-stage.is-rdp {
+    padding-bottom: calc(var(--dock-height) + var(--safe-bottom));
+  }
+  #app.keyboard-open .terminal-stage.is-rdp {
+    padding-bottom: 0 !important;
+  }
+}

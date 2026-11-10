@@ -295,9 +295,11 @@ function shadowApp() {
       const client = this.rdpClients[id];
       const el = document.getElementById(`rdp-${id}`);
       if (!client || !el) return;
-      const rect = el.getBoundingClientRect();
-      const width = Math.max(1, Math.floor(rect.width || el.clientWidth || 1280));
-      const height = Math.max(1, Math.floor(rect.height || el.clientHeight || 720));
+      // 必须量容器本身（CSS 里固定铺满终端面板），不能量被远程画面撑开的高度，
+      // 否则每次调整都会按上一次缩小后的画面再缩一次，全屏还原后画面越来越扁。
+      const width = Math.floor(el.clientWidth);
+      const height = Math.floor(el.clientHeight);
+      if (width < 2 || height < 2) return; // 标签页隐藏或尚未布局
       this.rdpViewportWidth = width;
       this.rdpViewportHeight = height;
       try {
@@ -305,8 +307,19 @@ function shadowApp() {
         const displayWidth = display.getWidth?.() || width;
         const displayHeight = display.getHeight?.() || height;
         display.scale(Math.min(width / displayWidth, height / displayHeight) || 1);
-        client.sendSize(width, height);
       } catch (_) {}
+      // 拖动窗口、切换全屏时会连续触发，稍等尺寸稳定后再请求远程桌面改分辨率，且尺寸不变不重复发送。
+      clearTimeout(this._rdpSizeTimers?.[id]);
+      this._rdpSizeTimers = this._rdpSizeTimers || {};
+      this._rdpSizeTimers[id] = setTimeout(() => {
+        const current = this.rdpClients[id];
+        if (!current) return;
+        const last = this._rdpSentSizes?.[id];
+        if (last && last.width === width && last.height === height) return;
+        this._rdpSentSizes = this._rdpSentSizes || {};
+        this._rdpSentSizes[id] = { width, height };
+        try { current.sendSize(width, height); } catch (_) {}
+      }, 200);
     },
 
     resizeActiveTerminal(id = this.activeSessionId) {
@@ -1234,9 +1247,9 @@ function shadowApp() {
         this.testMessageType = 'error';
         return;
       }
-      const rect = el.getBoundingClientRect();
-      const width = Math.max(1, Math.floor(rect.width || 1280));
-      const height = Math.max(1, Math.floor(rect.height || 720));
+      const width = Math.max(1, Math.floor(el.clientWidth || 1280));
+      const height = Math.max(1, Math.floor(el.clientHeight || 720));
+      this._rdpSentSizes = { ...(this._rdpSentSizes || {}), [id]: { width, height } };
       const query = new URLSearchParams({ width: String(width), height: String(height), dpi: '96', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' });
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const tunnel = new Guacamole.WebSocketTunnel(`${protocol}//${location.host}/api/v1/rdp/${connection.id}/tunnel?${query.toString()}`);
@@ -1247,6 +1260,11 @@ function shadowApp() {
       el.appendChild(display);
       guacDisplay.onresize = () => this.fitRdp(id);
       this.rdpClients[id] = client;
+      if (window.ResizeObserver) {
+        this._rdpObservers = this._rdpObservers || {};
+        this._rdpObservers[id] = new ResizeObserver(() => this.fitRdp(id));
+        this._rdpObservers[id].observe(el);
+      }
       client.onstatechange = (state) => {
         tab.connected = state === Guacamole.Client.State.CONNECTED || state === Guacamole.Client.State.WAITING;
         if (state === Guacamole.Client.State.CONNECTED) {
@@ -1270,8 +1288,9 @@ function shadowApp() {
         this.testMessage = status?.message || 'RDP 连接失败。';
         this.testMessageType = 'error';
       };
-      const mouse = new Guacamole.Mouse(el);
-      mouse.onmousedown = mouse.onmouseup = mouse.onmousemove = (mouseState) => client.sendMouseState(mouseState);
+      // 鼠标挂在远程画面元素上，并按显示缩放比例换算坐标，画面缩放或居中时点击位置才准确。
+      const mouse = new Guacamole.Mouse(display);
+      mouse.onmousedown = mouse.onmouseup = mouse.onmousemove = (mouseState) => client.sendMouseState(mouseState, true);
       const keyboard = new Guacamole.Keyboard(document);
       keyboard.onkeydown = (keysym) => {
         if (this.activeSessionId !== id) return true;
@@ -1329,6 +1348,10 @@ function shadowApp() {
       if (this.rdpClients[id]) {
         try { this.rdpClients[id].disconnect(); } catch (_) {}
         delete this.rdpClients[id];
+        clearTimeout(this._rdpSizeTimers?.[id]);
+        if (this._rdpSentSizes) delete this._rdpSentSizes[id];
+        this._rdpObservers?.[id]?.disconnect();
+        if (this._rdpObservers) delete this._rdpObservers[id];
       }
       const rdpEl = document.getElementById(`rdp-${id}`);
       if (rdpEl) rdpEl.innerHTML = '';
