@@ -2345,6 +2345,38 @@ input, textarea, pre, code, .terminal-surface, .xterm, .selectable-text {
   align-items: center;
   gap: 6px;
   cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--m3-duration-short) ease;
+}
+.term-fullscreen-exit-btn:hover,
+.term-fullscreen-exit-btn:focus-visible {
+  opacity: 1;
+}
+
+/* 网页内全屏：终端/RDP 铺满整个网页区域（不调用浏览器全屏 API，地址栏和标签栏保持可见）。
+   #app 本身是铺满可视区的 fixed 容器，这里的 fixed 以它为参照。
+   层级高于顶栏和侧栏，低于编辑器（110）、弹窗（120）和右键菜单，方便全屏时继续打开文件。 */
+.terminal-stage.fullscreen {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: auto;
+  z-index: 100;
+}
+
+@media (max-width: 1023px) {
+  /* 手机上让底部快捷键栏（z-index 80）留在全屏终端上方，并避开刘海 */
+  .terminal-stage.fullscreen {
+    z-index: 75;
+    padding-top: var(--safe-top);
+  }
+  .terminal-stage.fullscreen .term-fullscreen-exit-btn {
+    top: calc(var(--safe-top) + 8px);
+    right: 8px;
+    height: 32px;
+    padding: 0 12px;
+    font-size: 0.82rem;
+  }
 }
 
 /* ─── 18. KEYFRAME ANIMATIONS ─── */

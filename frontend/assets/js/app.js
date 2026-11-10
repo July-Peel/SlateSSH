@@ -480,7 +480,9 @@ function shadowApp() {
         }
       });
       document.addEventListener('keydown', (e) => {
-        if (this.isFullscreen && (e.key === 'Escape' || e.key === 'F11')) {
+        // SSH 终端里的 ESC 要留给 vim 等程序，只有焦点不在终端时才用 ESC 退出网页全屏。
+        const escInTerminal = e.key === 'Escape' && !!e.target?.closest?.('.xterm');
+        if (this.isFullscreen && !escInTerminal && (e.key === 'Escape' || e.key === 'F11')) {
           this.toggleFullscreen();
           e.preventDefault();
           return;

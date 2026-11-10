@@ -19,7 +19,7 @@
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20261026_interface_text">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20261110_web_fullscreen">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" class="app" :class="{ 'keyboard-open': isKeyboardOpen, 'theme-dark': colorMode === 'dark', 'theme-light': colorMode === 'light' }" x-cloak>
@@ -515,7 +515,7 @@
                 </button>
 
                 <div style="flex:1"></div>
-                <button class="m3-icon-btn" @click="toggleFullscreen()" :title="isFullscreen ? '退出全屏' : '全屏终端'">
+                <button class="m3-icon-btn" @click="toggleFullscreen()" :title="isFullscreen ? '退出网页全屏' : '网页内全屏'">
                   <span class="material-symbols-rounded" x-text="isFullscreen ? 'fullscreen_exit' : 'fullscreen'"></span>
                 </button>
               </div>
@@ -535,9 +535,9 @@
               <!-- Terminal viewport stage -->
               <div class="terminal-stage" :class="isFullscreen ? 'fullscreen' : ''">
                 <!-- Floating Exit Fullscreen Button -->
-                <button x-show="isFullscreen" @click="toggleFullscreen()" class="term-fullscreen-exit-btn" title="Exit Fullscreen (ESC)">
+                <button x-show="isFullscreen" @click="toggleFullscreen()" class="term-fullscreen-exit-btn" :title="activeSessionType() === 'RDP' ? '退出网页全屏 (ESC)' : '退出网页全屏（终端内的 ESC 会发送给远程程序）'">
                   <span class="material-symbols-rounded">fullscreen_exit</span>
-                  <span>退出全屏 (ESC)</span>
+                  <span x-text="activeSessionType() === 'RDP' && !isMobile ? '退出全屏 (ESC)' : '退出全屏'"></span>
                 </button>
 
 
@@ -1284,7 +1284,7 @@
 
         <!-- 9. FILE CONTEXT MENU -->
         <div x-show="contextMenu.visible" class="context-menu-scrim" @click="hideContextMenu()" @contextmenu.prevent="hideContextMenu()"></div>
-        <div x-show="contextMenu.visible" :style="isMobile ? '' : `left:${contextMenu.x}px;top:${contextMenu.y}px`" class="context-menu" :class="isMobile ? 'context-menu-sheet' : ''" role="menu" @click.stop @click.away="hideContextMenu()">
+        <div x-show="contextMenu.visible" :style="isMobile ? {} : { left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" class="context-menu" :class="isMobile ? 'context-menu-sheet' : ''" role="menu" @click.stop @click.away="hideContextMenu()">
           <div class="context-menu-head" x-show="isMobile && contextMenu.entry">
             <span :class="contextMenu.entry ? getFileIconClass(contextMenu.entry) : ''" x-text="contextMenu.entry ? getFileIcon(contextMenu.entry) : ''"></span>
             <div class="context-menu-title">
@@ -1378,8 +1378,8 @@
   </script>
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
-  <script src="/assets/js/pwa.js?v=20261026_interface_text"></script>
-  <script src="/assets/js/app.js?v=20261026_interface_text"></script>
+  <script src="/assets/js/pwa.js?v=20261110_web_fullscreen"></script>
+  <script src="/assets/js/app.js?v=20261110_web_fullscreen"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>
