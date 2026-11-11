@@ -298,11 +298,14 @@ func formatInstruction(elements ...string) string {
 func parseOptions(r *http.Request, driveRoot string, userID, connectionID int64) tunnelOptions {
 	query := r.URL.Query()
 	return tunnelOptions{
-		Width:     firstNonEmpty(query.Get("width"), "1280"),
-		Height:    firstNonEmpty(query.Get("height"), "720"),
-		DPI:       firstNonEmpty(query.Get("dpi"), "96"),
-		Timezone:  firstNonEmpty(query.Get("timezone"), "Asia/Shanghai"),
-		DrivePath: path.Join(driveRoot, "users", strconv.FormatInt(userID, 10), "connections", strconv.FormatInt(connectionID, 10)),
+		Width:    firstNonEmpty(query.Get("width"), "1280"),
+		Height:   firstNonEmpty(query.Get("height"), "720"),
+		DPI:      firstNonEmpty(query.Get("dpi"), "96"),
+		Timezone: firstNonEmpty(query.Get("timezone"), "Asia/Shanghai"),
+		// guacd creates only the final drive-path directory. Keep the
+		// per-user/per-connection identity in one directory name so the
+		// initialized drive root is sufficient for creation.
+		DrivePath: path.Join(driveRoot, fmt.Sprintf("user-%d-connection-%d", userID, connectionID)),
 	}
 }
 

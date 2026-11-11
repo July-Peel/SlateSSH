@@ -14,14 +14,14 @@ func TestParseOptionsBuildsIsolatedDrivePath(t *testing.T) {
 	if options.Width != "1440" || options.Height != "900" || options.DPI != "120" || options.Timezone != "Europe/Budapest" {
 		t.Fatalf("unexpected display options: %+v", options)
 	}
-	if options.DrivePath != "/var/lib/slatessh/rdp-drives/users/7/connections/12" {
+	if options.DrivePath != "/var/lib/slatessh/rdp-drives/user-7-connection-12" {
 		t.Fatalf("unexpected drive path: %q", options.DrivePath)
 	}
 }
 
 func TestParameterValueEnablesRdpDriveTransfer(t *testing.T) {
 	connection := &models.DecryptedConnection{Connection: models.Connection{Host: "desktop.example", Port: 3389, Username: "alice"}, Password: "secret"}
-	options := tunnelOptions{Width: "1280", Height: "720", DPI: "96", Timezone: "UTC", DrivePath: "/var/lib/slatessh/rdp-drives/users/1/connections/2"}
+	options := tunnelOptions{Width: "1280", Height: "720", DPI: "96", Timezone: "UTC", DrivePath: "/var/lib/slatessh/rdp-drives/user-1-connection-2"}
 
 	tests := map[string]string{
 		"enable-drive":      "true",
