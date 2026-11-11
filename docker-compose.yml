@@ -14,6 +14,7 @@
       STACK_GO_DATA_DIR: /app/data
       GUACD_HOST: guacd
       GUACD_PORT: 4822
+      GUACD_DRIVE_PATH: /var/lib/slatessh/rdp-drives
     volumes:
       - ./data:/app/data
     networks:
@@ -22,9 +23,21 @@
   guacd:
     image: guacamole/guacd:latest
     container_name: slatessh-guacd
+    depends_on:
+      rdp-drive-init:
+        condition: service_completed_successfully
+    volumes:
+      - slatessh-rdp-drives:/var/lib/slatessh/rdp-drives
     networks:
       - slatessh-network
     restart: unless-stopped
+
+  rdp-drive-init:
+    image: alpine:3.20
+    command: ["sh", "-c", "mkdir -p /var/lib/slatessh/rdp-drives && chown -R 1000:1000 /var/lib/slatessh/rdp-drives"]
+    volumes:
+      - slatessh-rdp-drives:/var/lib/slatessh/rdp-drives
+    restart: "no"
 
 networks:
   slatessh-network:
@@ -35,4 +48,7 @@ networks:
       config:
         - subnet: fd01::/80    
           gateway: fd01::1    
+
+volumes:
+  slatessh-rdp-drives:
 

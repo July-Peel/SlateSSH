@@ -1,8 +1,8 @@
-const CACHE = 'slatessh-shell-20261110-rdp-paste';
+const CACHE = 'slatessh-shell-20261111-rdp-drive';
 const SHELL = [
   '/',
-  '/assets/css/app.css?v=20261110_rdp_paste',
-  '/assets/js/app.js?v=20261110_rdp_paste',
+  '/assets/css/app.css?v=20261111_rdp_drive',
+  '/assets/js/app.js?v=20261111_rdp_drive',
   '/assets/js/pwa.js?v=20261110_rdp_fit',
   '/assets/vendor/material-symbols/rounded.css',
   '/assets/vendor/material-symbols/material-symbols-rounded.woff2',

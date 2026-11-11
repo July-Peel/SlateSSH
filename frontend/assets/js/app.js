@@ -21,6 +21,11 @@ function shadowApp() {
     terminals: {},
     rdpClients: {},
     rdpKeyboards: {},
+    rdpFilesystems: {},
+    rdpFileDirectories: {},
+    rdpFileEntries: {},
+    rdpFileLoading: {},
+    rdpFileErrors: {},
     rdpViewportWidth: 1280,
     rdpViewportHeight: 720,
     searchAddons: {},
@@ -278,6 +283,23 @@ function shadowApp() {
 
     canPasteRdp(id = this.activeSessionId) {
       return !!this.rdpClients[id] && this.sessions.some(tab => tab.id === id && tab.type === 'RDP' && tab.connected);
+    },
+
+    rdpFilesystem(id = this.activeSessionId) {
+      return (this.rdpFilesystems[id] || [])[0] || null;
+    },
+
+    rdpCurrentDirectory(id = this.activeSessionId) {
+      const filesystem = this.rdpFilesystem(id);
+      return this.rdpFileDirectories[id] || filesystem?.root || null;
+    },
+
+    rdpEntries(id = this.activeSessionId) {
+      return this.rdpFileEntries[id] || [];
+    },
+
+    canTransferRdp(id = this.activeSessionId) {
+      return this.canPasteRdp(id) && !!this.rdpFilesystem(id);
     },
 
     isConnectionActive(connection) {
@@ -1223,6 +1245,242 @@ function shadowApp() {
       }
     },
 
+    syncRdpEntries(id, directory) {
+      if (!directory) {
+        this.rdpFileEntries[id] = [];
+        return;
+      }
+      this.rdpFileEntries[id] = Object.values(directory.files || {}).sort((a, b) => {
+        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+        return String(a.filename).localeCompare(String(b.filename), undefined, { numeric: true, sensitivity: 'base' });
+      });
+    },
+
+    registerRdpFilesystem(id, object, name) {
+      if (!object || !this.rdpClients[id]) return;
+      const root = {
+        filename: '/',
+        streamName: Guacamole.Object.ROOT_STREAM,
+        mimetype: Guacamole.Object.STREAM_INDEX_MIMETYPE,
+        isDir: true,
+        parent: null,
+        files: {}
+      };
+      const filesystem = { object, name: name || 'SlateSSH', root, currentDirectory: root };
+      this.rdpFilesystems[id] = [...(this.rdpFilesystems[id] || []), filesystem];
+      if (!this.rdpFileDirectories[id]) {
+        this.rdpFileDirectories[id] = root;
+        this.syncRdpEntries(id, root);
+        this.refreshRdpDirectory(id, filesystem, root);
+      }
+    },
+
+    refreshRdpDirectory(id = this.activeSessionId, filesystem = this.rdpFilesystem(id), directory = this.rdpCurrentDirectory(id)) {
+      if (!filesystem?.object || !directory || !this.rdpClients[id]) return;
+      this.rdpFileLoading[id] = true;
+      this.rdpFileErrors[id] = '';
+      filesystem.object.requestInputStream(directory.streamName, (stream, mimetype) => {
+        if (mimetype !== Guacamole.Object.STREAM_INDEX_MIMETYPE) {
+          stream.sendAck('Unexpected filesystem index type', Guacamole.Status.Code.UNSUPPORTED);
+          this.rdpFileLoading[id] = false;
+          this.rdpFileErrors[id] = '远程文件系统返回了无法识别的目录格式。';
+          return;
+        }
+
+        stream.sendAck('Ready', Guacamole.Status.Code.SUCCESS);
+        const reader = new Guacamole.JSONReader(stream);
+        reader.onprogress = () => stream.sendAck('Received', Guacamole.Status.Code.SUCCESS);
+        reader.onend = () => {
+          const currentDirectory = this.rdpCurrentDirectory(id);
+          if (!this.rdpClients[id] || currentDirectory?.streamName !== directory.streamName) return;
+          const prefix = directory.streamName.endsWith('/') ? directory.streamName : `${directory.streamName}/`;
+          const entries = {};
+          const mimetypes = reader.getJSON() || {};
+          Object.keys(mimetypes).forEach(streamName => {
+            if (!streamName.startsWith(prefix)) return;
+            const filename = streamName.slice(prefix.length);
+            if (!filename || filename.includes('/')) return;
+            entries[filename] = {
+              filename,
+              streamName,
+              mimetype: mimetypes[streamName],
+              isDir: mimetypes[streamName] === Guacamole.Object.STREAM_INDEX_MIMETYPE,
+              parent: directory,
+              files: {}
+            };
+          });
+          directory.files = entries;
+          filesystem.currentDirectory = directory;
+          this.rdpFileDirectories[id] = directory;
+          this.syncRdpEntries(id, directory);
+          this.rdpFileLoading[id] = false;
+        };
+      });
+    },
+
+    refreshRdpFiles(id = this.activeSessionId) {
+      const filesystem = this.rdpFilesystem(id);
+      if (!filesystem) {
+        this.rdpFileEntries[id] = [];
+        return;
+      }
+      this.refreshRdpDirectory(id, filesystem, this.rdpCurrentDirectory(id) || filesystem.root);
+    },
+
+    openRdpDirectory(entry, id = this.activeSessionId) {
+      if (!entry?.isDir) return;
+      const filesystem = this.rdpFilesystem(id);
+      if (!filesystem) return;
+      filesystem.currentDirectory = entry;
+      this.rdpFileDirectories[id] = entry;
+      this.syncRdpEntries(id, entry);
+      this.refreshRdpDirectory(id, filesystem, entry);
+    },
+
+    goParentRdpDirectory(id = this.activeSessionId) {
+      const directory = this.rdpCurrentDirectory(id);
+      if (!directory?.parent) return;
+      this.openRdpDirectory(directory.parent, id);
+    },
+
+    saveRdpBlob(blob, filename, mimetype) {
+      const name = String(filename || 'download').split(/[\\/]/).pop() || 'download';
+      const file = new File([blob], name, { type: mimetype || blob.type || 'application/octet-stream' });
+      if (this.isIOS() && this.isStandalone && navigator.canShare?.({ files: [file] })) {
+        this.closeDownloadReady();
+        this.downloadReady = { visible: true, name, file, url: URL.createObjectURL(blob) };
+        this.testMessage = '';
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = name;
+      anchor.rel = 'noopener';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    },
+
+    receiveRdpFile(stream, mimetype, filename) {
+      if (!stream) return;
+      const reader = new Guacamole.BlobReader(stream, mimetype || 'application/octet-stream');
+      reader.onend = () => {
+        this.saveRdpBlob(reader.getBlob(), filename, mimetype);
+        this.testMessage = `已下载 ${String(filename || '文件').split(/[\\/]/).pop()}`;
+        this.testMessageType = 'success';
+      };
+      stream.sendAck('Ready', Guacamole.Status.Code.SUCCESS);
+    },
+
+    downloadRdpEntry(entry, id = this.activeSessionId) {
+      if (!entry || entry.isDir) return;
+      const filesystem = this.rdpFilesystem(id);
+      if (!filesystem?.object) return;
+      this.testMessage = `正在下载 ${entry.filename}...`;
+      this.testMessageType = 'info';
+      filesystem.object.requestInputStream(entry.streamName, (stream, mimetype) => {
+        if (mimetype === Guacamole.Object.STREAM_INDEX_MIMETYPE) {
+          stream.sendAck('Directories cannot be downloaded as files', Guacamole.Status.Code.UNSUPPORTED);
+          this.testMessage = '目录不能作为文件下载。';
+          this.testMessageType = 'error';
+          return;
+        }
+        this.receiveRdpFile(stream, mimetype, entry.filename);
+      });
+    },
+
+    uploadRdpOneFile(file, id, filesystem, directory) {
+      return new Promise((resolve, reject) => {
+        const filename = String(file.name || 'upload').replace(/[\\/\0]/g, '_').trim() || 'upload';
+        const base = directory.streamName === '/' ? '' : directory.streamName.replace(/\/$/, '');
+        const streamName = `${base}/${filename}`;
+        let settled = false;
+        const finish = (error) => {
+          if (settled) return;
+          settled = true;
+          if (error) reject(error instanceof Error ? error : new Error(String(error || '上传失败')));
+          else resolve();
+        };
+        let stream;
+        try {
+          stream = filesystem.object.createOutputStream(file.type || 'application/octet-stream', streamName);
+          stream.onack = (status) => {
+            stream.onack = null;
+            if (status?.isError?.() || (status?.code && status.code !== Guacamole.Status.Code.SUCCESS)) {
+              finish(new Error(status.message || `上传失败 (${status.code})`));
+              return;
+            }
+            try {
+              const writer = new Guacamole.BlobWriter(stream);
+              writer.onprogress = (_blob, length) => {
+                this.uploadProgress = file.size ? Math.min(100, Math.round((length / file.size) * 100)) : 100;
+              };
+              writer.onerror = (_failedFile, _offset, error) => {
+                try { stream.sendEnd(); } catch (_) {}
+                finish(error || new Error('上传失败'));
+              };
+              writer.oncomplete = () => {
+                try { stream.sendEnd(); } catch (_) {}
+                finish();
+              };
+              writer.sendBlob(file);
+            } catch (error) {
+              try { stream.sendEnd(); } catch (_) {}
+              finish(error);
+            }
+          };
+        } catch (error) {
+          finish(error);
+        }
+      });
+    },
+
+    async handleRdpFileUpload(event) {
+      const selected = Array.from(event.target.files || []);
+      event.target.value = '';
+      const id = this.activeSessionId;
+      const filesystem = this.rdpFilesystem(id);
+      const directory = this.rdpCurrentDirectory(id);
+      if (!selected.length || !id || !filesystem || !directory) return;
+      const existing = new Set(this.rdpEntries(id).filter(entry => !entry.isDir).map(entry => entry.filename));
+      const conflicts = selected.filter(file => existing.has(file.name)).map(file => file.name);
+      if (conflicts.length && !confirm(`以下文件已存在，将被覆盖：\n${conflicts.join('\n')}\n\n确定继续上传？`)) return;
+      this.uploading = true;
+      let done = 0;
+      try {
+        for (const file of selected) {
+          this.uploadProgress = 0;
+          this.uploadLabel = selected.length > 1 ? `${file.name} (${done + 1}/${selected.length})` : file.name;
+          await this.uploadRdpOneFile(file, id, filesystem, directory);
+          done++;
+        }
+        this.testMessage = selected.length > 1 ? `已上传 ${done} 个文件到 RDP 驱动器` : `上传完成 ${selected[0].name}`;
+        this.testMessageType = 'success';
+        this.refreshRdpFiles(id);
+      } catch (error) {
+        this.testMessage = `${error.message || '上传失败'}${done ? `（已完成 ${done} 个）` : ''}`;
+        this.testMessageType = 'error';
+      } finally {
+        this.uploading = false;
+        this.uploadProgress = 0;
+        this.uploadLabel = '';
+      }
+    },
+
+    handleRdpDrop(event) {
+      if (this.activeSessionType() !== 'RDP' || this.uploading) return;
+      const files = event.dataTransfer?.files;
+      if (!files?.length) return;
+      const input = this.$refs.uploadInput;
+      if (!input) return;
+      const transfer = new DataTransfer();
+      Array.from(files).forEach(file => transfer.items.add(file));
+      input.files = transfer.files;
+      this.handleRdpFileUpload({ target: input });
+    },
+
     async openRdpSession(connection) {
       if (!window.Guacamole) {
         this.testMessage = 'Guacamole 客户端加载失败，请检查网络或静态资源。';
@@ -1239,6 +1497,11 @@ function shadowApp() {
       this.sessions.push({ id, connectionId: connection.id, name: connection.name || connection.host || 'RDP', type: 'RDP', connected: false });
       const tab = this.sessions[this.sessions.length - 1];
       this.activeSessionId = id;
+      this.rdpFilesystems[id] = [];
+      this.rdpFileDirectories[id] = null;
+      this.rdpFileEntries[id] = [];
+      this.rdpFileLoading[id] = false;
+      this.rdpFileErrors[id] = '';
       this.files = [];
       this.activePath = '.';
       this.testMessage = `正在打开 RDP 桌面 ${tab.name}...`;
@@ -1264,6 +1527,8 @@ function shadowApp() {
       el.appendChild(display);
       guacDisplay.onresize = () => this.fitRdp(id);
       this.rdpClients[id] = client;
+      client.onfilesystem = (object, name) => this.registerRdpFilesystem(id, object, name);
+      client.onfile = (stream, mimetype, filename) => this.receiveRdpFile(stream, mimetype, filename);
       if (window.ResizeObserver) {
         this._rdpObservers = this._rdpObservers || {};
         this._rdpObservers[id] = new ResizeObserver(() => this.fitRdp(id));
@@ -1367,6 +1632,11 @@ function shadowApp() {
         this._rdpObservers?.[id]?.disconnect();
         if (this._rdpObservers) delete this._rdpObservers[id];
       }
+      delete this.rdpFilesystems[id];
+      delete this.rdpFileDirectories[id];
+      delete this.rdpFileEntries[id];
+      delete this.rdpFileLoading[id];
+      delete this.rdpFileErrors[id];
       const rdpEl = document.getElementById(`rdp-${id}`);
       if (rdpEl) rdpEl.innerHTML = '';
       if (this.terminals[id]) {
@@ -1850,9 +2120,7 @@ function shadowApp() {
 
     async refreshFiles() {
       if (this.activeSessionType() === 'RDP') {
-        this.files = [];
-        this.testMessage = 'RDP 会话不提供 SFTP 文件浏览。';
-        this.testMessageType = 'info';
+        this.refreshRdpFiles();
         return;
       }
       if (!this.activeSessionId) {
@@ -2754,8 +3022,13 @@ function shadowApp() {
 
     triggerUpload() {
       if (!this.activeSessionId) {
-        this.testMessage = '请先连接 SSH 会话。';
+        this.testMessage = '请先连接 SSH 或 RDP 会话。';
         this.testMessageType = 'error';
+        return;
+      }
+      if (this.activeSessionType() === 'RDP' && !this.canTransferRdp()) {
+        this.testMessage = 'RDP 虚拟驱动器尚未就绪，请稍候。';
+        this.testMessageType = 'info';
         return;
       }
       if (this.uploading) {
@@ -2800,6 +3073,10 @@ function shadowApp() {
     async handleFileUpload(event) {
       const input = event.target;
       const selected = Array.from(input.files || []);
+      if (this.activeSessionType() === 'RDP') {
+        await this.handleRdpFileUpload(event);
+        return;
+      }
       input.value = '';
       const sessionId = this.activeSessionId;
       const path = this.activePath || '.';

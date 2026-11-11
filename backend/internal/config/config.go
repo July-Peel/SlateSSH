@@ -10,15 +10,16 @@ import (
 )
 
 type Config struct {
-	Host          string
-	Port          int
-	DataDir       string
-	DBPath        string
-	SessionSecret string
-	EncryptionKey string
-	FrontendDir   string
-	GuacdHost     string
-	GuacdPort     int
+	Host           string
+	Port           int
+	DataDir        string
+	DBPath         string
+	SessionSecret  string
+	EncryptionKey  string
+	FrontendDir    string
+	GuacdHost      string
+	GuacdPort      int
+	GuacdDrivePath string
 }
 
 // Load 用于读取运行配置并准备持久化密钥。
@@ -49,15 +50,16 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		Host:          getenv("HOST", "0.0.0.0"),
-		Port:          port,
-		DataDir:       dataDir,
-		DBPath:        filepath.Join(dataDir, "slatessh.db"),
-		SessionSecret: sessionSecret,
-		EncryptionKey: encryptionKey,
-		FrontendDir:   getenv("FRONTEND_DIR", filepath.Join("..", "frontend")),
-		GuacdHost:     getenv("GUACD_HOST", "guacd"),
-		GuacdPort:     guacdPort,
+		Host:           getenv("HOST", "0.0.0.0"),
+		Port:           port,
+		DataDir:        dataDir,
+		DBPath:         filepath.Join(dataDir, "slatessh.db"),
+		SessionSecret:  sessionSecret,
+		EncryptionKey:  encryptionKey,
+		FrontendDir:    getenv("FRONTEND_DIR", filepath.Join("..", "frontend")),
+		GuacdHost:      getenv("GUACD_HOST", "guacd"),
+		GuacdPort:      guacdPort,
+		GuacdDrivePath: getenv("GUACD_DRIVE_PATH", "/var/lib/slatessh/rdp-drives"),
 	}, nil
 }
 

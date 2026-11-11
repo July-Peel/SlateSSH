@@ -31,6 +31,12 @@ docker compose up --build
 - 手机文件编辑使用原生文本框，PC 使用 Monaco。文件右侧的 `···` 可打开复制、下载等操作。
 - 断开的 SSH 会话保留输出，并显示重新连接按钮。iOS 切换后台可能挂起网络，返回后请检查会话状态；长期任务建议在服务器使用 tmux / screen。
 
+## RDP 文件传输
+
+RDP 会话通过 Guacamole 的虚拟驱动器传输文件。连接成功后，右侧或移动端的「文件管理」面板可以浏览驱动器、上传文件并下载远程文件。Windows 远程桌面内会显示名为 `SlateSSH` 的网络驱动器，通常可通过 `\\tsclient\SlateSSH` 访问。
+
+Docker Compose 使用持久化的 `slatessh-rdp-drives` 卷保存传输文件。`rdp-drive-init` 服务会为 `guacd` 的 UID 1000 准备卷权限。若使用自定义部署方式，需要让 `guacd` 可读写 `GUACD_DRIVE_PATH` 指向的目录，并保持该路径与后端配置一致。
+
 ## PWA 与 iPhone Safari
 
 生产环境需使用 **HTTPS**（本机 localhost 可用于开发）。在 Safari 分享菜单中选择「添加到主屏幕」，如有「作为 Web App 打开」选项，请保持开启。再次从主屏幕启动即可使用独立窗口。
@@ -51,7 +57,7 @@ cd backend
 go test ./...
 ```
 
-浏览器测试使用独立的静态服务和模拟 API / SSH 消息，不连接真实主机。覆盖 320–1440px、402×874 手机视口、横屏、登录、主机表单、控制字符、弹窗、键盘视口、PWA 安装及缓存隔离。
+浏览器测试使用独立的静态服务和模拟 API / SSH / Guacamole 消息，不连接真实主机。覆盖 320–1440px、402×874 手机视口、横屏、登录、主机表单、控制字符、弹窗、键盘视口、RDP 驱动器浏览与上传、PWA 安装及缓存隔离。
 
 Windows Playwright WebKit 的断网模拟会在受 Service Worker 控制的请求上返回内部错误，因此该环境跳过离线重载一项；离线重载在 Chromium 验证。WebKit 测试使用浏览器引擎和模拟视口，不能替代 iPhone 真机验证。发布前请在 Safari 和主屏幕应用中复核：键盘开合 / 中文输入 / 密码填充、横竖屏安全区、快捷栏滑动与连按、后台返回、飞行模式启动与恢复联网。
 

@@ -78,7 +78,7 @@ func New() (*App, error) {
 		settingsHandler: settings.NewHandler(settings.NewRepository(database)),
 		connections:     connections.NewHandler(connectionsService),
 		transfers:       transfers.NewHandler(database),
-		rdp:             rdp.NewHandler(connectionsService, authService, cfg.GuacdHost, cfg.GuacdPort),
+		rdp:             rdp.NewHandler(connectionsService, authService, cfg.GuacdHost, cfg.GuacdPort, cfg.GuacdDrivePath),
 		wsHub:           ws.NewHub(connectionsService, authService),
 	}
 	application.router = sessions.LoadAndSave(application.routes())

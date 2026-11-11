@@ -19,7 +19,7 @@
   <link rel="manifest" href="/assets/icons/site.webmanifest">
   <link rel="stylesheet" href="/assets/vendor/material-symbols/rounded.css">
   <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20261110_rdp_paste">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20261111_rdp_drive">
 </head>
 <body>
   <div id="app" x-data="shadowApp()" class="app" :class="{ 'keyboard-open': isKeyboardOpen, 'theme-dark': colorMode === 'dark', 'theme-light': colorMode === 'light' }" x-cloak>
@@ -684,7 +684,7 @@
               </div>
 
               <!-- SFTP File Explorer (Desktop) -->
-              <div class="side-panel-body" x-show="rightTab === 'files'">
+              <div class="side-panel-body" x-show="rightTab === 'files' && activeSessionType() !== 'RDP'">
                 <div class="path-bar-container" @click.away="showPathDropdown = false">
                   <div class="path-input-wrapper">
                     <span class="material-symbols-rounded" style="font-size:18px;color:var(--md-sys-color-primary);flex-shrink:0;">folder_open</span>
@@ -739,6 +739,74 @@
                     </div>
                   </template>
                 </div>
+              </div>
+
+              <!-- RDP Virtual Drive Explorer -->
+              <div class="side-panel-body rdp-file-panel" x-show="rightTab === 'files' && activeSessionType() === 'RDP'" @dragover.prevent @drop.prevent="handleRdpDrop($event)">
+                <div class="rdp-drive-header">
+                  <div>
+                    <strong>RDP 文件</strong>
+                    <span x-text="rdpFilesystem(activeSessionId)?.name || '等待虚拟驱动器'" class="rdp-drive-name"></span>
+                  </div>
+                  <span class="material-symbols-rounded">folder_shared</span>
+                </div>
+                <div class="rdp-drive-path" x-text="rdpCurrentDirectory(activeSessionId)?.streamName || '/'"></div>
+                <div class="file-actions">
+                  <button class="m3-btn m3-btn-tonal file-act-btn" @click="goParentRdpDirectory()" :disabled="!rdpCurrentDirectory(activeSessionId)?.parent" title="返回上一层目录">
+                    <span class="material-symbols-rounded">arrow_upward</span>
+                    <span>上一层</span>
+                  </button>
+                  <button class="m3-btn m3-btn-tonal file-act-btn" @click="refreshRdpFiles()" :disabled="rdpFileLoading[activeSessionId]" title="刷新 RDP 文件">
+                    <span class="material-symbols-rounded">refresh</span>
+                    <span>刷新</span>
+                  </button>
+                  <button class="m3-btn m3-btn-filled primary file-act-btn" @click="triggerUpload()" :disabled="uploading || !canTransferRdp()" title="上传本地文件">
+                    <span class="material-symbols-rounded">upload</span>
+                    <span>上传文件</span>
+                  </button>
+                </div>
+                <div class="rdp-drop-hint">将文件拖到此处，或使用上传按钮</div>
+                <div class="file-list">
+                  <template x-if="!activeSessionId">
+                    <div class="m3-empty-state">
+                      <span class="material-symbols-rounded">cloud_off</span>
+                      <p>请先连接 RDP 会话</p>
+                    </div>
+                  </template>
+                  <template x-if="activeSessionId && !rdpFilesystem(activeSessionId)">
+                    <div class="m3-empty-state">
+                      <span class="material-symbols-rounded">hourglass_top</span>
+                      <p>正在等待 RDP 虚拟驱动器...</p>
+                    </div>
+                  </template>
+                  <template x-if="rdpFilesystem(activeSessionId) && rdpFileErrors[activeSessionId]">
+                    <div class="m3-empty-state">
+                      <span class="material-symbols-rounded">error</span>
+                      <p x-text="rdpFileErrors[activeSessionId]"></p>
+                    </div>
+                  </template>
+                  <template x-if="rdpFilesystem(activeSessionId) && !rdpFileLoading[activeSessionId] && !rdpFileErrors[activeSessionId] && !rdpEntries(activeSessionId).length">
+                    <div class="m3-empty-state">
+                      <span class="material-symbols-rounded">folder_open</span>
+                      <p>此目录为空</p>
+                    </div>
+                  </template>
+                  <template x-for="entry in rdpEntries(activeSessionId)" :key="entry.streamName">
+                    <div class="file-item" :title="entry.filename + (entry.isDir ? '/' : '')">
+                      <button class="file-main" @click="entry.isDir ? openRdpDirectory(entry) : downloadRdpEntry(entry)">
+                        <span :class="entry.isDir ? 'material-symbols-rounded file-icon folder' : 'material-symbols-rounded file-icon'" x-text="entry.isDir ? 'folder' : 'description'"></span>
+                        <span class="file-text">
+                          <span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span>
+                          <span class="file-meta" x-text="entry.isDir ? '目录' : '双击或点击下载'"></span>
+                        </span>
+                      </button>
+                      <button x-show="!entry.isDir" class="m3-icon-btn" style="width:32px;height:32px;" @click.stop="downloadRdpEntry(entry)" :aria-label="'下载 ' + entry.filename">
+                        <span class="material-symbols-rounded" style="font-size:18px;">download</span>
+                      </button>
+                    </div>
+                  </template>
+                </div>
+                <p class="rdp-drive-note">Windows 端会看到名为 SlateSSH 的网络驱动器。将文件复制到其中即可在此处访问。</p>
               </div>
 
               <!-- Server Telemetry (Desktop) -->
@@ -885,7 +953,7 @@
         </div>
 
         <!-- Mobile SFTP Bottom Sheet -->
-        <div x-show="showMobileSftp" x-effect="syncDialog($el, showMobileSftp)" role="dialog" aria-modal="true" aria-label="远程文件" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileSftp = false">
+        <div x-show="showMobileSftp && activeSessionType() !== 'RDP'" x-effect="syncDialog($el, showMobileSftp && activeSessionType() !== 'RDP')" role="dialog" aria-modal="true" aria-label="远程文件" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileSftp = false">
           <section class="m3-dialog mobile-term-modal">
             <div class="m3-drag-handle"></div>
             <div class="modal-head">
@@ -943,6 +1011,49 @@
                 </div>
               </template>
             </div>
+          </section>
+        </div>
+
+        <!-- Mobile RDP Virtual Drive Bottom Sheet -->
+        <div x-show="showMobileSftp && activeSessionType() === 'RDP'" x-effect="syncDialog($el, showMobileSftp && activeSessionType() === 'RDP')" role="dialog" aria-modal="true" aria-label="RDP 文件" class="modal-backdrop mobile-modal-backdrop" @click.self="showMobileSftp = false" @dragover.prevent @drop.prevent="handleRdpDrop($event)">
+          <section class="m3-dialog mobile-term-modal">
+            <div class="m3-drag-handle"></div>
+            <div class="modal-head">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                <span class="material-symbols-rounded" style="color:var(--md-sys-color-primary);">folder_shared</span>
+                <span class="modal-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">RDP 文件</span>
+              </div>
+              <button @click="showMobileSftp = false" class="m3-icon-btn" aria-label="关闭">
+                <span class="material-symbols-rounded">close</span>
+              </button>
+            </div>
+            <div class="rdp-drive-path" x-text="rdpFilesystem(activeSessionId)?.name || '等待虚拟驱动器'"></div>
+            <div class="file-actions">
+              <button class="m3-btn m3-btn-tonal file-act-btn" @click="goParentRdpDirectory()" :disabled="!rdpCurrentDirectory(activeSessionId)?.parent" title="返回上一层目录"><span class="material-symbols-rounded">arrow_upward</span><span>上一层</span></button>
+              <button class="m3-btn m3-btn-tonal file-act-btn" @click="refreshRdpFiles()" :disabled="rdpFileLoading[activeSessionId]" title="刷新 RDP 文件"><span class="material-symbols-rounded">refresh</span><span>刷新</span></button>
+              <button class="m3-btn m3-btn-filled primary file-act-btn" @click="triggerUpload()" :disabled="uploading || !canTransferRdp()" title="上传本地文件"><span class="material-symbols-rounded">upload</span><span>上传</span></button>
+            </div>
+            <div class="file-list mobile-file-list">
+              <template x-if="!rdpFilesystem(activeSessionId)">
+                <div class="m3-empty-state"><span class="material-symbols-rounded">hourglass_top</span><p>正在等待 RDP 虚拟驱动器...</p></div>
+              </template>
+              <template x-if="rdpFilesystem(activeSessionId) && !rdpFileLoading[activeSessionId] && !rdpFileErrors[activeSessionId] && !rdpEntries(activeSessionId).length">
+                <div class="m3-empty-state"><span class="material-symbols-rounded">folder_open</span><p>此目录为空</p></div>
+              </template>
+              <template x-if="rdpFileErrors[activeSessionId]">
+                <div class="m3-empty-state"><span class="material-symbols-rounded">error</span><p x-text="rdpFileErrors[activeSessionId]"></p></div>
+              </template>
+              <template x-for="entry in rdpEntries(activeSessionId)" :key="entry.streamName">
+                <div class="file-item" :title="entry.filename + (entry.isDir ? '/' : '')">
+                  <button class="file-main" @click="entry.isDir ? openRdpDirectory(entry) : downloadRdpEntry(entry)">
+                    <span :class="entry.isDir ? 'material-symbols-rounded file-icon folder' : 'material-symbols-rounded file-icon'" x-text="entry.isDir ? 'folder' : 'description'"></span>
+                    <span class="file-text"><span class="file-name" x-text="entry.filename + (entry.isDir ? '/' : '')"></span><span class="file-meta" x-text="entry.isDir ? '目录' : '点击下载'"></span></span>
+                  </button>
+                  <button x-show="!entry.isDir" class="m3-icon-btn" style="width:36px;height:36px;" @click.stop="downloadRdpEntry(entry)" :aria-label="'下载 ' + entry.filename"><span class="material-symbols-rounded">download</span></button>
+                </div>
+              </template>
+            </div>
+            <p class="rdp-drive-note">将文件拖到此处即可上传到当前目录。</p>
           </section>
         </div>
 
@@ -1387,7 +1498,7 @@
   <script src="/assets/vendor/monaco/vs/loader.js"></script>
   <script>window.require.config({ paths: { vs: '/assets/vendor/monaco/vs' } });</script>
   <script src="/assets/js/pwa.js?v=20261110_rdp_fit"></script>
-  <script src="/assets/js/app.js?v=20261110_rdp_paste"></script>
+  <script src="/assets/js/app.js?v=20261111_rdp_drive"></script>
   <script src="/assets/vendor/alpine/alpine.min.js"></script>
 </body>
 </html>

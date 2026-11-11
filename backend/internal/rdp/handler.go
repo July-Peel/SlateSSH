@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,24 +27,37 @@ type Handler struct {
 	authService        *auth.Service
 	guacdHost          string
 	guacdPort          int
+	driveRoot          string
 }
 
 type tunnelOptions struct {
-	Width    string
-	Height   string
-	DPI      string
-	Timezone string
+	Width     string
+	Height    string
+	DPI       string
+	Timezone  string
+	DrivePath string
 }
 
 // NewHandler 用于创建对应模块的 HTTP 处理器。
-// 输入参数：connectionsService 表示connectionsService 参数；authService 表示authService 参数；guacdHost 表示guacdHost 参数；guacdPort 表示guacdPort 参数。
+// 输入参数：connectionsService 表示connectionsService 参数；authService 表示authService 参数；guacdHost 表示guacdHost 参数；guacdPort 表示guacdPort 参数；driveRoots 表示可选的 RDP 虚拟驱动器根目录。
 // 输出参数：返回 *Handler。
-func NewHandler(connectionsService *connections.Service, authService *auth.Service, guacdHost string, guacdPort int) *Handler {
+func NewHandler(connectionsService *connections.Service, authService *auth.Service, guacdHost string, guacdPort int, driveRoots ...string) *Handler {
 	if strings.TrimSpace(guacdHost) == "" {
 		guacdHost = "guacd"
 	}
 	if guacdPort <= 0 {
 		guacdPort = 4822
+	}
+	driveRoot := ""
+	if len(driveRoots) > 0 {
+		driveRoot = driveRoots[0]
+	}
+	if strings.TrimSpace(driveRoot) == "" {
+		driveRoot = "/var/lib/slatessh/rdp-drives"
+	}
+	driveRoot = strings.TrimRight(driveRoot, "/")
+	if driveRoot == "" {
+		driveRoot = "/"
 	}
 	return &Handler{
 		upgrader:           websocket.Upgrader{Subprotocols: []string{"guacamole"}, CheckOrigin: func(r *http.Request) bool { return true }},
@@ -51,6 +65,7 @@ func NewHandler(connectionsService *connections.Service, authService *auth.Servi
 		authService:        authService,
 		guacdHost:          guacdHost,
 		guacdPort:          guacdPort,
+		driveRoot:          driveRoot,
 	}
 }
 
@@ -100,7 +115,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer guacd.Close()
 
 	reader := bufio.NewReader(guacd)
-	options := parseOptions(r)
+	options := parseOptions(r, h.driveRoot, h.authService.CurrentUser(r).ID, connectionID)
 	if err := h.handshake(guacd, reader, connection, options); err != nil {
 		_ = browser.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
 		return
@@ -280,13 +295,14 @@ func formatInstruction(elements ...string) string {
 // parseOptions 用于从 RDP 隧道请求中解析显示参数。
 // 输入参数：r 表示HTTP 请求对象。
 // 输出参数：返回 tunnelOptions。
-func parseOptions(r *http.Request) tunnelOptions {
+func parseOptions(r *http.Request, driveRoot string, userID, connectionID int64) tunnelOptions {
 	query := r.URL.Query()
 	return tunnelOptions{
-		Width:    firstNonEmpty(query.Get("width"), "1280"),
-		Height:   firstNonEmpty(query.Get("height"), "720"),
-		DPI:      firstNonEmpty(query.Get("dpi"), "96"),
-		Timezone: firstNonEmpty(query.Get("timezone"), "Asia/Shanghai"),
+		Width:     firstNonEmpty(query.Get("width"), "1280"),
+		Height:    firstNonEmpty(query.Get("height"), "720"),
+		DPI:       firstNonEmpty(query.Get("dpi"), "96"),
+		Timezone:  firstNonEmpty(query.Get("timezone"), "Asia/Shanghai"),
+		DrivePath: path.Join(driveRoot, "users", strconv.FormatInt(userID, 10), "connections", strconv.FormatInt(connectionID, 10)),
 	}
 }
 
@@ -325,7 +341,13 @@ func parameterValue(name string, connection *models.DecryptedConnection, options
 		return options.Timezone
 	case "disable-audio":
 		return "true"
-	case "enable-drive", "create-drive-path", "enable-printing", "enable-audio-input", "read-only":
+	case "enable-drive", "create-drive-path":
+		return "true"
+	case "drive-path":
+		return options.DrivePath
+	case "drive-name":
+		return "SlateSSH"
+	case "disable-download", "disable-upload", "enable-printing", "enable-audio-input", "read-only":
 		return "false"
 	default:
 		return ""
